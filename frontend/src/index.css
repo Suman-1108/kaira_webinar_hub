@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary-burgundy: #970747;
+  --color-secondary-rose: #D63384;
+  --color-soft-rose: #F3A6C4;
+  --color-blush-bg: #F7DCE8;
+  --color-main-bg: #FFFFFF;
+  --color-section-bg: #FDF5F8;
+  --color-main-text: #25171E;
+  --color-secondary-text: #66545D;
+  --color-border: #EBDDE4;
+
+  --gradient-btn-primary: linear-gradient(110deg, #970747 0%, #D63384 100%);
+  --gradient-btn-primary-hover: linear-gradient(110deg, #80053b 0%, #bf2672 100%);
+  --gradient-hero-decor: radial-gradient(circle at 70% 35%, #F7DCE8 0%, #F3A6C4 35%, #D63384 70%, #970747 100%);
+  --gradient-soft-card: linear-gradient(135deg, #FFFFFF 0%, #FDF5F8 100%);
+  --gradient-subtle-rose: linear-gradient(180deg, #FDF5F8 0%, #FFFFFF 100%);
+
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .font-heading {
+  font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Custom Utilities for the Kaira Design System */
+.btn-primary {
+  background: linear-gradient(110deg, #970747 0%, #D63384 100%);
+  color: #FFFFFF;
+  font-weight: 600;
+  border-radius: 9999px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px -2px rgba(151, 7, 71, 0.32);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -2px rgba(151, 7, 71, 0.45);
+  background: linear-gradient(110deg, #80053b 0%, #bf2672 100%);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: #FFFFFF;
+  color: #970747;
+  border: 1.5px solid #F3A6C4;
+  font-weight: 600;
+  border-radius: 9999px;
+  transition: all 0.25s ease;
+}
+
+.btn-secondary:hover {
+  background: #FDF5F8;
+  border-color: #D63384;
+  color: #970747;
+}
+
+.card-kaira {
+  background: #FFFFFF;
+  border: 1px solid #EBDDE4;
+  border-radius: 1.25rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px -4px rgba(37, 23, 30, 0.04);
+}
+
+.card-kaira:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px -6px rgba(151, 7, 71, 0.08);
+  border-color: #F3A6C4;
+}
+
+/* Glass & Soft effects */
+.glass-burgundy {
+  background: rgba(151, 7, 71, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #FDF5F8;
+}
+::-webkit-scrollbar-thumb {
+  background: #F3A6C4;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #D63384;
+}
