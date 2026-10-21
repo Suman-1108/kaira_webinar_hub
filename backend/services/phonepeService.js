@@ -91,27 +91,7 @@ const initiatePhonePePayment = async ({
       mode: config.envStr.toLowerCase()
     };
   } catch (err) {
-    console.warn(`[PhonePe SDK Notice] Live initiation returned: ${err.message}`);
-
-    // If sandbox / credentials are unactivated or throw 401 in development,
-    // generate a graceful simulation redirect so developers and testers can test the complete UI loop
-    const isDevelopment = process.env.NODE_ENV !== 'production' || config.envStr === 'SANDBOX';
-    
-    if (isDevelopment) {
-      console.log('[PhonePe Service] Running test/sandbox fallback flow for development verification.');
-      return {
-        success: true,
-        merchantTransactionId: merchantOrderId,
-        merchantOrderId,
-        paymentUrl: `${config.frontendUrl}/my-learning?payment=success&regId=${encodeURIComponent(registrationId)}&orderId=${encodeURIComponent(merchantOrderId)}&simulated=true`,
-        orderId: `sim_${Date.now()}`,
-        state: 'PENDING_USER_PAY',
-        provider: 'phonepe',
-        mode: 'sandbox_simulation',
-        warning: `PhonePe API notice: ${err.message}. Showing sandbox flow.`
-      };
-    }
-
+    console.error(`[PhonePe SDK Error] Pay initiation failed: ${err.message}`);
     return {
       success: false,
       merchantTransactionId: merchantOrderId,
@@ -125,20 +105,6 @@ const initiatePhonePePayment = async ({
  * Check PhonePe transaction / order status
  */
 const checkPhonePeStatus = async (merchantOrderId) => {
-  const config = getPhonePeConfig();
-
-  // Handle simulated test orders
-  if (merchantOrderId && (merchantOrderId.startsWith('sim_') || merchantOrderId.includes('simulated'))) {
-    return {
-      success: true,
-      state: 'COMPLETED',
-      orderId: merchantOrderId,
-      merchantOrderId,
-      amount: 0,
-      mode: 'sandbox_simulation'
-    };
-  }
-
   try {
     const client = getClient();
     const statusResponse = await client.getOrderStatus(merchantOrderId, true);
@@ -153,19 +119,7 @@ const checkPhonePeStatus = async (merchantOrderId) => {
       raw: statusResponse
     };
   } catch (err) {
-    console.warn('[PhonePe Status Check Warning]:', err.message);
-    
-    // In dev / sandbox mode, return graceful test success if checking a valid merchant order
-    if (config.envStr === 'SANDBOX' || process.env.NODE_ENV !== 'production') {
-      return {
-        success: true,
-        state: 'COMPLETED',
-        orderId: `sim_order_${Date.now()}`,
-        merchantOrderId,
-        mode: 'sandbox_fallback'
-      };
-    }
-
+    console.error('[PhonePe Status Check Error]:', err.message);
     return {
       success: false,
       state: 'FAILED',

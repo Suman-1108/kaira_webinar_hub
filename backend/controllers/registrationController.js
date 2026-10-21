@@ -294,21 +294,17 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Mark as verified & completed
-    const updated = await storage.updateRegistrationStatus(registrationId, {
-      paymentStatus: 'completed',
-      razorpayPaymentId: razorpayPaymentId || `pay_verified_${Date.now()}`,
-      razorpayOrderId: razorpayOrderId || reg.razorpayOrderId,
-      razorpaySignature: razorpaySignature || 'backend_verified_sig',
-      verifiedAt: new Date(),
-      emailNotificationSent: true,
-      whatsappNotificationSent: reg.whatsappOptIn
+    // Mark as verified & completed and issue PDF invoice
+    const updated = await fulfillPaymentAndDeliverInvoice({
+      registration: {
+        ...reg,
+        razorpayPaymentId: razorpayPaymentId || `pay_verified_${Date.now()}`,
+        razorpayOrderId: razorpayOrderId || reg.razorpayOrderId,
+        razorpaySignature: razorpaySignature || 'backend_verified_sig'
+      },
+      transactionId: razorpayPaymentId || `pay_verified_${Date.now()}`,
+      paymentMethod: 'razorpay'
     });
-
-    const webinar = await storage.getWebinarById(reg.webinarId);
-    if (webinar) {
-      await scheduleReminders(updated, webinar);
-    }
 
     res.json({
       success: true,
@@ -502,6 +498,137 @@ exports.createPhonePeOrder = async (req, res) => {
   }
 };
 
+// Centralized Payment Fulfillment & PDF Invoice Delivery
+const fulfillPaymentAndDeliverInvoice = async ({ registration, transactionId, paymentMethod = 'phonepe' }) => {
+  const regId = registration.registrationId;
+  const webinar = await storage.getWebinarById(registration.webinarId);
+  const courseTitle = webinar?.title || registration.webinarTitle;
+  const amount = Number(registration.amount || 0);
+  const currency = registration.currency || 'INR';
+  const invoiceNumber = registration.invoiceNumber || generateInvoiceNumber();
+
+  // 1. Update registration status in storage / DB
+  const updatedReg = await storage.updateRegistrationStatus(regId, {
+    paymentStatus: 'completed',
+    paymentMethod,
+    phonepeTransactionId: transactionId || registration.phonepeTransactionId || '',
+    verifiedAt: new Date(),
+    invoiceNumber,
+    emailNotificationSent: true
+  });
+
+  // 2. Persistent Invoice record with idempotency
+  let invoiceDoc = null;
+  try {
+    const Invoice = require('../models/Invoice');
+    invoiceDoc = await Invoice.findOne({ registrationId: regId });
+    if (!invoiceDoc) {
+      invoiceDoc = await Invoice.create({
+        invoiceNumber,
+        registrationId: regId,
+        userId: registration.userId || null,
+        userEmail: registration.email.toLowerCase().trim(),
+        studentName: registration.fullName,
+        studentPhone: registration.phone || '',
+        courseId: webinar?.id || registration.webinarId,
+        courseTitle,
+        amount,
+        currency,
+        paymentProvider: paymentMethod,
+        merchantOrderId: registration.phonepeMerchantTransactionId || registration.razorpayOrderId || '',
+        transactionId: transactionId || '',
+        paymentStatus: 'completed',
+        paidAt: new Date(),
+        emailDelivered: false
+      });
+    }
+  } catch (invErr) {
+    console.warn('[Invoice Storage Warning]:', invErr.message);
+  }
+
+  // 3. Generate Invoice PDF and send email (if not already sent)
+  const isEmailDelivered = invoiceDoc?.emailDelivered;
+  if (!isEmailDelivered && amount > 0) {
+    try {
+      const pdfService = require('../services/pdfService');
+      const invoicePdf = await pdfService.generateInvoicePdf({
+        invoiceNumber,
+        studentName: registration.fullName,
+        studentEmail: registration.email,
+        studentPhone: registration.phone,
+        courseTitle,
+        amount,
+        currency,
+        paymentMethod,
+        transactionId: transactionId || registration.phonepeMerchantTransactionId || '',
+        orderId: regId,
+        paidAt: new Date()
+      });
+
+      const emailRes = await emailService.sendPaymentSuccessInvoiceEmail({
+        to: registration.email,
+        fullName: registration.fullName,
+        courseTitle,
+        amount,
+        currency,
+        invoiceNumber,
+        transactionId: transactionId || registration.phonepeMerchantTransactionId || '',
+        paymentMethod,
+        paidAt: new Date(),
+        invoicePdfBuffer: invoicePdf
+      });
+
+      if (emailRes.success && invoiceDoc) {
+        invoiceDoc.emailDelivered = true;
+        invoiceDoc.emailDeliveredAt = new Date();
+        await invoiceDoc.save();
+      }
+    } catch (mailErr) {
+      console.error('[Invoice Email Delivery Error]:', mailErr.message);
+    }
+  }
+
+  // 4. Establish initial progress in StudentCourseProgress for this student
+  try {
+    const StudentCourseProgress = require('../models/StudentCourseProgress');
+    const curriculumService = require('../services/curriculumService');
+    if (webinar) {
+      const curriculum = curriculumService.buildCurriculumForWebinar(webinar);
+      const trackable = curriculumService.getTrackableLessons(curriculum);
+      const existingProg = await StudentCourseProgress.findOne({
+        $or: [
+          { userId: String(registration.userId), courseId: webinar.id },
+          { userEmail: registration.email.toLowerCase().trim(), courseId: webinar.id }
+        ]
+      });
+      if (!existingProg) {
+        await StudentCourseProgress.create({
+          userId: String(registration.userId || `usr_${Date.now()}`),
+          userEmail: registration.email.toLowerCase().trim(),
+          courseId: webinar.id,
+          completedLessonIds: [],
+          passedSectionIds: [],
+          sectionQuizResults: [],
+          lessonProgress: [],
+          completedLessonCount: 0,
+          totalTrackableLessonCount: trackable.length,
+          completionPercentage: 0,
+          isCourseCompleted: false,
+          lastAccessedLessonId: trackable[0]?.lessonId || ''
+        });
+      }
+    }
+  } catch (progErr) {
+    console.warn('[Progress Init Warning]:', progErr.message);
+  }
+
+  if (webinar) {
+    await scheduleReminders(updatedReg || registration, webinar);
+  }
+
+  return updatedReg || registration;
+};
+
 // PhonePe Payment Verification (Synchronous / Callback)
 exports.verifyPhonePePayment = async (req, res) => {
   try {
@@ -542,58 +669,41 @@ exports.verifyPhonePePayment = async (req, res) => {
     }
 
     const txnId = orderId || merchantTransactionId || reg.phonepeMerchantTransactionId;
-    let paymentVerified = false;
-    let phonepeTransactionId = '';
-
-    if (txnId) {
-      try {
-        const statusRes = await phonepeService.checkPhonePeStatus(txnId);
-        if (statusRes.success || statusRes.state === 'COMPLETED' || statusRes.state === 'SUCCESS') {
-          paymentVerified = true;
-          phonepeTransactionId = statusRes.orderId || txnId;
-        } else {
-          // Graceful fallback in sandbox/dev mode
-          paymentVerified = true;
-          phonepeTransactionId = `phonepe_${Date.now()}`;
-        }
-      } catch (e) {
-        paymentVerified = true;
-        phonepeTransactionId = `phonepe_${Date.now()}`;
-      }
-    } else {
-      paymentVerified = true;
-      phonepeTransactionId = `phonepe_${Date.now()}`;
+    if (!txnId) {
+      return res.status(400).json({ success: false, message: 'No valid PhonePe merchant order ID found for verification.' });
     }
 
-    if (paymentVerified) {
-      const updated = await storage.updateRegistrationStatus(reg.registrationId, {
-        paymentStatus: 'completed',
+    // Strictly check status with PhonePe PG v2 SDK
+    const statusRes = await phonepeService.checkPhonePeStatus(txnId);
+    const isSuccess = statusRes.success || statusRes.state === 'COMPLETED' || statusRes.state === 'SUCCESS';
+
+    if (!isSuccess) {
+      return res.status(400).json({
+        success: false,
+        message: `PhonePe payment status is ${statusRes.state || 'PENDING'}. Please complete checkout or retry.`,
+        state: statusRes.state || 'FAILED'
+      });
+    }
+
+    const phonepeTransactionId = statusRes.orderId || txnId;
+    const fulfilled = await fulfillPaymentAndDeliverInvoice({
+      registration: reg,
+      transactionId: phonepeTransactionId,
+      paymentMethod: 'phonepe'
+    });
+
+    return res.json({
+      success: true,
+      message: 'PhonePe payment verified successfully and invoice dispatched.',
+      data: {
+        registrationId: fulfilled.registrationId,
+        status: fulfilled.paymentStatus,
         paymentMethod: 'phonepe',
         phonepeTransactionId,
-        verifiedAt: new Date(),
-        emailNotificationSent: true
-      });
-
-      const webinar = await storage.getWebinarById(reg.webinarId);
-      if (webinar) {
-        await scheduleReminders(updated, webinar);
+        joiningLink: fulfilled.joiningLink,
+        invoiceNumber: fulfilled.invoiceNumber
       }
-
-      return res.json({
-        success: true,
-        message: 'PhonePe payment verified successfully.',
-        data: {
-          registrationId: updated.registrationId,
-          status: updated.paymentStatus,
-          paymentMethod: 'phonepe',
-          phonepeTransactionId,
-          joiningLink: updated.joiningLink,
-          invoiceNumber: updated.invoiceNumber
-        }
-      });
-    }
-
-    res.status(400).json({ success: false, message: 'PhonePe payment verification failed.' });
+    });
   } catch (error) {
     console.error('verifyPhonePePayment error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -629,28 +739,20 @@ exports.handlePhonePeWebhook = async (req, res) => {
 
     if (merchantOrderId && isSuccess) {
       const all = await storage.getAllRegistrations();
-      const match = all.find(r => r.phonepeMerchantTransactionId === merchantOrderId);
+      const match = all.find(r => r.phonepeMerchantTransactionId === merchantOrderId || r.registrationId === merchantOrderId);
       
       if (match) {
-        // Duplicate Event Protection: do not re-process if already completed
         if (match.paymentStatus === 'completed') {
-          console.log(`[PhonePe Webhook] Order ${merchantOrderId} already completed. Skipping.`);
+          console.log(`[PhonePe Webhook] Order ${merchantOrderId} already completed. Idempotent skip.`);
           return res.json({ status: 'SUCCESS', message: 'Already processed' });
         }
 
-        const updated = await storage.updateRegistrationStatus(match.registrationId, {
-          paymentStatus: 'completed',
-          paymentMethod: 'phonepe',
-          phonepeTransactionId: phonepeTxnId || merchantOrderId,
-          verifiedAt: new Date(),
-          emailNotificationSent: true
+        await fulfillPaymentAndDeliverInvoice({
+          registration: match,
+          transactionId: phonepeTxnId || merchantOrderId,
+          paymentMethod: 'phonepe'
         });
-
-        const webinar = await storage.getWebinarById(match.webinarId);
-        if (webinar) {
-          await scheduleReminders(updated, webinar);
-        }
-        console.log(`[PhonePe Webhook] Marked registration ${match.registrationId} as paid.`);
+        console.log(`[PhonePe Webhook] Successfully fulfilled registration ${match.registrationId}.`);
       }
     }
 
@@ -660,4 +762,6 @@ exports.handlePhonePeWebhook = async (req, res) => {
     res.status(500).json({ status: 'FAILED' });
   }
 };
+
+exports.fulfillPaymentAndDeliverInvoice = fulfillPaymentAndDeliverInvoice;
 

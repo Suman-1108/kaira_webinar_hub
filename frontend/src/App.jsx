@@ -19,6 +19,7 @@ import InstructorPage from './pages/InstructorPage';
 import AdminPage from './pages/AdminPage';
 import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage } from './pages/AuthPages';
 import { AboutPage, ContactPage, FAQPage, TermsPage, PrivacyPage, RefundPolicyPage } from './pages/StaticPages';
+import VerifyCertificatePage from './pages/VerifyCertificatePage';
 
 function AppShell() {
   const location = useLocation();
@@ -51,6 +52,7 @@ function AppShell() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/refund-policy" element={<RefundPolicyPage />} />
+          <Route path="/verify-certificate/:certificateNumber" element={<VerifyCertificatePage />} />
 
           {/* Authentication */}
           <Route path="/login" element={<LoginPage />} />

@@ -321,10 +321,140 @@ async function sendVerificationOtpEmail({ to, fullName, otp, expiresMinutes = 10
   }
 }
 
+/**
+ * Send Payment Success Confirmation Email with Attached Official PDF Invoice
+ */
+async function sendPaymentSuccessInvoiceEmail({
+  to,
+  fullName,
+  courseTitle,
+  amount,
+  currency = 'INR',
+  invoiceNumber,
+  transactionId,
+  paymentMethod = 'PhonePe',
+  paidAt = new Date(),
+  invoicePdfBuffer
+}) {
+  const sender = process.env.EMAIL_FROM || '"Kaira Webinar Hub" <hellosuman29@gmail.com>';
+  const formattedDate = new Date(paidAt).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+  const myLearningUrl = `${process.env.FRONTEND_URL || 'http://localhost:5174'}/my-learning`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FAF5F7; margin: 0; padding: 24px; color: #1C1D1F; }
+        .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #F1D3DE; box-shadow: 0 4px 20px rgba(151,7,71,0.08); }
+        .header { background: linear-gradient(135deg, #18000A 0%, #350317 40%, #750435 100%); padding: 36px 30px; text-align: center; color: #ffffff; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 800; }
+        .header p { margin: 8px 0 0 0; color: #FBCFE8; font-size: 13px; }
+        .badge { display: inline-block; background: #059669; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 14px; border-radius: 999px; margin-bottom: 12px; letter-spacing: 1px; }
+        .body { padding: 32px 30px; }
+        .order-card { background: #FDF6F8; border: 1px solid #F1D3DE; border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .order-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F8E2EB; font-size: 14px; }
+        .order-row:last-child { border-bottom: none; font-weight: bold; }
+        .btn { display: inline-block; background: #970747; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; margin-top: 20px; }
+        .footer { padding: 20px 30px; background: #FAF5F7; text-align: center; font-size: 11px; color: #71717A; border-top: 1px solid #F1D3DE; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <span class="badge">Payment Confirmed</span>
+          <h1>Enrollment Activated!</h1>
+          <p>Thank you for choosing Kaira Webinar Hub</p>
+        </div>
+        <div class="body">
+          <p style="font-size: 15px; margin-top: 0;">Hi <strong>${fullName || 'Learner'}</strong>,</p>
+          <p style="font-size: 14px; color: #52525B; line-height: 1.6;">
+            Your payment for <strong>${courseTitle}</strong> was successfully verified. Your course enrollment has been granted and your official tax invoice is attached as a PDF to this email.
+          </p>
+
+          <div class="order-card">
+            <div class="order-row">
+              <span style="color: #71717A;">Invoice Number</span>
+              <strong style="color: #970747;">#${invoiceNumber}</strong>
+            </div>
+            <div class="order-row">
+              <span style="color: #71717A;">Course</span>
+              <span>${courseTitle}</span>
+            </div>
+            <div class="order-row">
+              <span style="color: #71717A;">Payment Date</span>
+              <span>${formattedDate}</span>
+            </div>
+            <div class="order-row">
+              <span style="color: #71717A;">Payment Method</span>
+              <span>${paymentMethod.toUpperCase()}</span>
+            </div>
+            <div class="order-row">
+              <span style="color: #71717A;">Transaction ID</span>
+              <span style="font-family: monospace;">${transactionId || 'VERIFIED'}</span>
+            </div>
+            <div class="order-row" style="font-size: 16px; color: #970747; margin-top: 4px;">
+              <span>Amount Paid</span>
+              <span>${currency} ${Number(amount).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <p style="font-size: 14px; color: #52525B; line-height: 1.6;">
+            You can now launch the Udemy-style course player, stream all lecture modules, complete required hands-on section quizzes, and earn your accredited Certificate of Completion.
+          </p>
+
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${myLearningUrl}" class="btn">Go to My Learning & Start Course</a>
+          </div>
+
+          <p style="font-size: 12px; color: #A1A1AA; text-align: center;">
+            Need help? Reply to this email or reach us at <a href="mailto:support@kairawebinarhub.com" style="color: #970747;">support@kairawebinarhub.com</a>.
+          </p>
+        </div>
+        <div class="footer">
+          <p>Kaira Webinar Hub * Educational Excellence & Verified Credentials</p>
+          <p>An official receipt copy is attached to this transmission.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const mailOptions = {
+      from: sender,
+      to,
+      subject: `Payment Receipt: ${courseTitle} [#${invoiceNumber}]`,
+      text: `Hi ${fullName},\n\nYour payment of ${currency} ${amount} for ${courseTitle} has been confirmed. Your invoice #${invoiceNumber} is attached as a PDF.\n\nAccess your course: ${myLearningUrl}\n\nSupport: support@kairawebinarhub.com`,
+      html: htmlContent,
+      attachments: invoicePdfBuffer ? [
+        {
+          filename: `Invoice_${invoiceNumber}.pdf`,
+          content: invoicePdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ] : []
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[Email Service] Payment confirmation & invoice PDF dispatched to ${to} (MessageId: ${info.messageId})`);
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error(`[Email Service] Failed to send invoice email to ${to}:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 module.exports = {
   transporter,
   sendRegistrationConfirmation,
   sendVerificationOtpEmail,
   sendPasswordResetEmail,
-  sendEnquiryEmails
+  sendEnquiryEmails,
+  sendPaymentSuccessInvoiceEmail
 };

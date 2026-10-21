@@ -29,6 +29,18 @@ const studentCourseProgressSchema = new mongoose.Schema({
   lastAccessedLessonId: { type: String, default: '' },
   lastAccessedAt: { type: Date, default: Date.now },
   courseCompletedAt: { type: Date },
+  passedSectionIds: [{ type: String }],
+  sectionQuizResults: [{
+    sectionId: { type: String, required: true },
+    quizId: { type: String },
+    passed: { type: Boolean, default: false },
+    bestScore: { type: Number, default: 0 },
+    attemptsCount: { type: Number, default: 0 },
+    lastAttemptAt: { type: Date }
+  }],
+  isCourseCompleted: { type: Boolean, default: false },
+  certificateIssued: { type: Boolean, default: false },
+  certificateNumber: { type: String, default: '' },
   isArchived: { type: Boolean, default: false },
   isInMyList: { type: Boolean, default: false },
   rating: { type: Number, default: 0 },

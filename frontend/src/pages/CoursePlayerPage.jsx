@@ -32,7 +32,12 @@ import {
   AlertCircle, 
   X,
   Menu,
-  Check
+  Check,
+  HelpCircle,
+  Lock,
+  RefreshCw,
+  ShoppingBag,
+  CreditCard
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -46,9 +51,11 @@ export default function CoursePlayerPage() {
   const [curriculum, setCurriculum] = useState([]);
   const [progress, setProgress] = useState({
     completedLessonIds: [],
+    passedSectionIds: [],
     completedLessonCount: 0,
     totalTrackableLessonCount: 0,
     completionPercentage: 0,
+    isCourseCompleted: false,
     lastAccessedLessonId: '',
     lessonProgress: []
   });
@@ -58,6 +65,24 @@ export default function CoursePlayerPage() {
   const [activeTab, setActiveTab] = useState('overview'); // overview, notes, announcements, reviews, tools
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [errorNotice, setErrorNotice] = useState(null);
+
+  // Unenrolled Gate State
+  const [notEnrolledData, setNotEnrolledData] = useState(null);
+  const [initiatingPayment, setInitiatingPayment] = useState(false);
+  const [enrollingFree, setEnrollingFree] = useState(false);
+
+  // Quiz Modal State
+  const [activeQuizSection, setActiveQuizSection] = useState(null);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizData, setQuizData] = useState(null);
+  const [quizAnswers, setQuizAnswers] = useState({});
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
+  const [quizResult, setQuizResult] = useState(null);
+
+  // Certificate Modal State
+  const [certificateModalOpen, setCertificateModalOpen] = useState(false);
+  const [certificateData, setCertificateData] = useState(null);
+  const [certificateLoading, setCertificateLoading] = useState(false);
 
   // Video state
   const videoRef = useRef(null);
@@ -74,7 +99,6 @@ export default function CoursePlayerPage() {
 
   // New Note state
   const [newNoteText, setNewNoteText] = useState('');
-  const [notesFilter, setNotesFilter] = useState('all');
 
   // Learning reminder state
   const [reminderSaved, setReminderSaved] = useState(false);
@@ -91,7 +115,7 @@ export default function CoursePlayerPage() {
     curriculum.forEach(section => {
       if (section.lessons) {
         section.lessons.forEach(lesson => {
-          list.push({ ...lesson, sectionTitle: section.title, sectionId: section.sectionId });
+          list.push({ ...lesson, sectionTitle: section.title, sectionId: section.sectionId, isSectionLocked: section.isLocked });
         });
       }
     });
@@ -105,69 +129,74 @@ export default function CoursePlayerPage() {
   }, [activeLesson, allLessons]);
 
   // Fetch course details & progress
-  useEffect(() => {
+  const fetchCourse = async () => {
     if (!token) {
       navigate(`/login?redirect=${encodeURIComponent(`/course/${courseId}/learn`)}`);
       return;
     }
 
-    const fetchCourse = async () => {
-      try {
-        setLoading(true);
-        setErrorNotice(null);
-        const res = await fetch(`/api/learning/course/${courseId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+    try {
+      setLoading(true);
+      setErrorNotice(null);
+      const res = await fetch(`/api/learning/course/${courseId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
 
-        if (!res.ok || !data.success) {
-          if (data.code === 'PAYMENT_REQUIRED') {
-            setErrorNotice('Payment Required: You are not enrolled in this masterclass yet.');
-            setTimeout(() => {
-              navigate(`/webinars/${courseId}?register=true`);
-            }, 2500);
-            return;
-          }
-          throw new Error(data.message || 'Failed to load course');
+      if (!res.ok || !data.success) {
+        if (data.code === 'PAYMENT_REQUIRED') {
+          setNotEnrolledData({
+            courseId: data.courseId,
+            title: data.title,
+            price: data.price,
+            thumbnail: data.thumbnail,
+            message: data.message
+          });
+          setLoading(false);
+          return;
         }
-
-        const { course, curriculum: curr, progress: prog, notes: userNotes } = data.data;
-        setCourseData(course);
-        setCurriculum(curr || []);
-        setProgress(prog || {
-          completedLessonIds: [],
-          completedLessonCount: 0,
-          totalTrackableLessonCount: 0,
-          completionPercentage: 0
-        });
-        setNotes(userNotes || []);
-
-        // Flatten lessons to find starting lesson
-        const flatLessons = [];
-        (curr || []).forEach(s => s.lessons && flatLessons.push(...s.lessons));
-
-        let startLesson = null;
-        if (prog?.lastAccessedLessonId) {
-          startLesson = flatLessons.find(l => l.lessonId === prog.lastAccessedLessonId);
-        }
-        if (!startLesson && flatLessons.length > 0) {
-          // Find first uncompleted lesson
-          startLesson = flatLessons.find(l => !(prog?.completedLessonIds || []).includes(l.lessonId)) || flatLessons[0];
-        }
-
-        setActiveLesson(startLesson);
-      } catch (err) {
-        console.error('Course load error:', err);
-        setErrorNotice(err.message);
-      } finally {
-        setLoading(false);
+        throw new Error(data.message || 'Failed to load course');
       }
-    };
 
+      setNotEnrolledData(null);
+      const { course, curriculum: curr, progress: prog, notes: userNotes } = data.data;
+      setCourseData(course);
+      setCurriculum(curr || []);
+      setProgress(prog || {
+        completedLessonIds: [],
+        passedSectionIds: [],
+        completedLessonCount: 0,
+        totalTrackableLessonCount: 0,
+        completionPercentage: 0
+      });
+      setNotes(userNotes || []);
+
+      // Flatten lessons to find starting lesson
+      const flatLessons = [];
+      (curr || []).forEach(s => s.lessons && flatLessons.push(...s.lessons));
+
+      let startLesson = null;
+      if (prog?.lastAccessedLessonId) {
+        startLesson = flatLessons.find(l => l.lessonId === prog.lastAccessedLessonId);
+      }
+      if (!startLesson && flatLessons.length > 0) {
+        startLesson = flatLessons.find(l => !(prog?.completedLessonIds || []).includes(l.lessonId)) || flatLessons[0];
+      }
+
+      setActiveLesson(startLesson);
+    } catch (err) {
+      console.error('Course load error:', err);
+      setErrorNotice(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchCourse();
-  }, [courseId, token, navigate]);
+  }, [courseId, token]);
 
-  // When active lesson changes, resume saved position
+  // Video position resume
   useEffect(() => {
     if (!activeLesson || !videoRef.current) return;
 
@@ -192,7 +221,7 @@ export default function CoursePlayerPage() {
     };
   }, [activeLesson, progress.lessonProgress]);
 
-  // Periodic progress saving (throttled)
+  // Periodic progress saving
   const saveProgressToBackend = async (pos, dur) => {
     if (!activeLesson || !token || !pos) return;
     try {
@@ -209,18 +238,16 @@ export default function CoursePlayerPage() {
           durationSeconds: Math.floor(dur || duration)
         })
       });
-    } catch (e) {
-      console.warn('Progress auto-save note:', e.message);
+    } catch (err) {
+      console.warn('Silent progress save error:', err.message);
     }
   };
 
-  // Video time update handler
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const pos = videoRef.current.currentTime;
     setCurrentTime(pos);
 
-    // Save every 12 seconds
     const now = Date.now();
     if (now - lastSaveTimeRef.current > 12000) {
       lastSaveTimeRef.current = now;
@@ -233,14 +260,14 @@ export default function CoursePlayerPage() {
     }
   };
 
-  // Toggle Play/Pause
+  // Video playback controls
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
       const playPromise = videoRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
-          console.warn('Video playback deferred or source not yet ready:', err.message);
+          console.warn('Video playback deferred or source not ready:', err.message);
         });
       }
       setIsPlaying(true);
@@ -251,7 +278,6 @@ export default function CoursePlayerPage() {
     }
   };
 
-  // Seek bar change
   const handleSeek = (e) => {
     const target = parseFloat(e.target.value);
     if (videoRef.current) {
@@ -261,14 +287,12 @@ export default function CoursePlayerPage() {
     }
   };
 
-  // Toggle Mute
   const toggleMute = () => {
     if (!videoRef.current) return;
     videoRef.current.muted = !isMuted;
     setIsMuted(!isMuted);
   };
 
-  // Change Volume
   const handleVolumeChange = (e) => {
     const val = parseFloat(e.target.value);
     setVolume(val);
@@ -279,7 +303,6 @@ export default function CoursePlayerPage() {
     }
   };
 
-  // Change Playback Speed
   const handleSpeedChange = (speed) => {
     setPlaybackSpeed(speed);
     if (videoRef.current) {
@@ -288,7 +311,6 @@ export default function CoursePlayerPage() {
     setShowSpeedMenu(false);
   };
 
-  // Fullscreen toggle
   const toggleFullscreen = () => {
     if (!playerContainerRef.current) return;
     if (!document.fullscreenElement) {
@@ -315,14 +337,10 @@ export default function CoursePlayerPage() {
       updatedCompletedIds = updatedCompletedIds.filter(id => id !== lessonId);
     }
 
-    const total = progress.totalTrackableLessonCount || allLessons.length;
-    const newPercentage = total > 0 ? Math.min(100, Math.round((updatedCompletedIds.length / total) * 100)) : 0;
-
     setProgress(prev => ({
       ...prev,
       completedLessonIds: updatedCompletedIds,
-      completedLessonCount: updatedCompletedIds.length,
-      completionPercentage: newPercentage
+      completedLessonCount: updatedCompletedIds.length
     }));
 
     try {
@@ -344,17 +362,24 @@ export default function CoursePlayerPage() {
           ...prev,
           completedLessonIds: data.data.completedLessonIds,
           completedLessonCount: data.data.completedLessonCount,
+          totalTrackableLessonCount: data.data.totalTrackableLessonCount,
           completionPercentage: data.data.completionPercentage,
+          isCourseCompleted: data.data.isCourseCompleted,
           courseCompletedAt: data.data.courseCompletedAt
         }));
+        // Re-fetch curriculum to update section quiz unlock flags
+        fetchCourse();
       }
     } catch (err) {
       console.warn('Failed to sync lesson completion:', err);
     }
   };
 
-  // Switch to lesson
   const switchLesson = (lesson) => {
+    if (lesson.isLocked) {
+      alert('This section is locked. Please complete prior sections and pass their assessments first.');
+      return;
+    }
     if (videoRef.current) {
       saveProgressToBackend(videoRef.current.currentTime, videoRef.current.duration);
     }
@@ -362,7 +387,6 @@ export default function CoursePlayerPage() {
     setIsPlaying(false);
   };
 
-  // Navigation: Next / Prev
   const goToNextLesson = () => {
     if (currentLessonIndex < allLessons.length - 1) {
       switchLesson(allLessons[currentLessonIndex + 1]);
@@ -375,7 +399,7 @@ export default function CoursePlayerPage() {
     }
   };
 
-  // Add personal note
+  // Notes
   const handleAddNote = async (e) => {
     e.preventDefault();
     if (!newNoteText.trim() || !activeLesson || !token) return;
@@ -401,12 +425,12 @@ export default function CoursePlayerPage() {
         setNewNoteText('');
       }
     } catch (err) {
-      console.warn('Note add error:', err);
+      console.error('Note add error:', err);
     }
   };
 
-  // Delete personal note
   const handleDeleteNote = async (noteId) => {
+    if (!token) return;
     try {
       await fetch(`/api/learning/notes/${courseId}/${noteId}`, {
         method: 'DELETE',
@@ -414,11 +438,10 @@ export default function CoursePlayerPage() {
       });
       setNotes(notes.filter(n => n._id !== noteId));
     } catch (err) {
-      console.warn('Note delete error:', err);
+      console.error('Note delete error:', err);
     }
   };
 
-  // Toggle Section Collapse
   const toggleSection = (sectionId) => {
     setCollapsedSections(prev => ({
       ...prev,
@@ -426,50 +449,325 @@ export default function CoursePlayerPage() {
     }));
   };
 
-  // Format seconds to mm:ss
   const formatTime = (seconds) => {
-    if (isNaN(seconds) || seconds < 0) return '0:00';
+    if (isNaN(seconds)) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Share link handler
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: courseData?.title || 'KairaHub Masterclass',
+        title: courseData?.title || 'Kaira Webinar Hub Masterclass',
         url: window.location.href
-      });
+      }).catch(() => {});
     } else {
       navigator.clipboard.writeText(window.location.href);
-      alert('Course player link copied to clipboard!');
+      alert('Course learning link copied to clipboard!');
     }
   };
 
+  // Section Quiz Handlers
+  const handleOpenQuiz = async (section) => {
+    setActiveQuizSection(section);
+    setQuizResult(null);
+    setQuizAnswers({});
+    setQuizLoading(true);
+
+    try {
+      const res = await fetch(`/api/learning/quiz/${courseId}/${section.sectionId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Could not load section assessment');
+      }
+      setQuizData(data.data.quiz);
+    } catch (err) {
+      alert(err.message);
+      setActiveQuizSection(null);
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const handleSelectOption = (questionId, optionIdx) => {
+    setQuizAnswers(prev => ({ ...prev, [questionId]: optionIdx }));
+  };
+
+  const handleSubmitQuiz = async () => {
+    if (!activeQuizSection || !quizData || quizSubmitting) return;
+
+    const formattedAnswers = (quizData.questions || []).map(q => ({
+      questionId: q.questionId,
+      selectedOption: quizAnswers[q.questionId] !== undefined ? quizAnswers[q.questionId] : -1
+    }));
+
+    const unanswered = formattedAnswers.some(a => a.selectedOption === -1);
+    if (unanswered) {
+      alert('Please select an answer for every assessment question.');
+      return;
+    }
+
+    setQuizSubmitting(true);
+    try {
+      const res = await fetch(`/api/learning/quiz/${courseId}/${activeQuizSection.sectionId}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ answers: formattedAnswers })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Assessment evaluation failed');
+      }
+
+      setQuizResult(data.data);
+      if (data.data.passed) {
+        // Refresh curriculum and unlocks
+        fetchCourse();
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setQuizSubmitting(false);
+    }
+  };
+
+  // Certificate Modal Handlers
+  const handleOpenCertificate = async () => {
+    setCertificateModalOpen(true);
+    setCertificateLoading(true);
+    try {
+      const res = await fetch(`/api/learning/certificate/${courseId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Certificate requirements not completed yet.');
+      }
+      setCertificateData(data.data);
+    } catch (err) {
+      alert(err.message);
+      setCertificateModalOpen(false);
+    } finally {
+      setCertificateLoading(false);
+    }
+  };
+
+  const handleDownloadCertificate = async () => {
+    try {
+      const res = await fetch(`/api/learning/certificate/${courseId}/download`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to download certificate PDF');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Certificate_${courseId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleDownloadInvoice = async () => {
+    try {
+      const res = await fetch(`/api/learning/invoice/${courseId}/download`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to download invoice PDF');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice_${courseId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // Buy Now (PhonePe Standard Checkout)
+  const handleBuyCourse = async () => {
+    if (!token) {
+      navigate(`/login?redirect=${encodeURIComponent(`/course/${courseId}/learn`)}`);
+      return;
+    }
+    setInitiatingPayment(true);
+    try {
+      const regRes = await fetch('/api/registration', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          webinarId: notEnrolledData?.courseId || courseId,
+          fullName: user.name || 'Valued Student',
+          email: user.email,
+          phone: user.phone || '9876543210',
+          ticketType: 'VIP Masterclass Pass',
+          paymentProvider: 'phonepe'
+        })
+      });
+      const regData = await regRes.json();
+      if (!regRes.ok || !regData.success) {
+        throw new Error(regData.message || 'Could not initiate registration.');
+      }
+
+      const peRes = await fetch('/api/payments/phonepe/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ registrationId: regData.registrationId })
+      });
+      const peData = await peRes.json();
+      if (!peRes.ok || !peData.success || !peData.redirectUrl) {
+        throw new Error(peData.message || 'PhonePe payment checkout could not be created.');
+      }
+
+      window.location.href = peData.redirectUrl;
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setInitiatingPayment(false);
+    }
+  };
+
+  // Free Course Enrollment
+  const handleEnrollFree = async () => {
+    if (!token) {
+      navigate(`/login?redirect=${encodeURIComponent(`/course/${courseId}/learn`)}`);
+      return;
+    }
+    setEnrollingFree(true);
+    try {
+      const res = await fetch('/api/learning/enroll-free', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ courseId: notEnrolledData?.courseId || courseId })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Free enrollment failed');
+      }
+      setNotEnrolledData(null);
+      fetchCourse();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setEnrollingFree(false);
+    }
+  };
+
+  // Loading Screen
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#1C1D1F] text-white flex flex-col items-center justify-center p-6">
-        <div className="w-12 h-12 border-4 border-[#970747] border-t-transparent rounded-full animate-spin mb-4" />
-        <h3 className="text-lg font-bold text-white">Loading Course Player...</h3>
-        <p className="text-xs text-zinc-400 mt-1">Retrieving verified enrollment and persistent progress...</p>
+      <div className="min-h-screen bg-[#1C1D1F] flex flex-col items-center justify-center text-white space-y-4">
+        <div className="w-12 h-12 border-3 border-[#970747] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-semibold tracking-wide text-zinc-300">
+          Loading learning space & course curriculum...
+        </p>
       </div>
     );
   }
 
-  if (errorNotice) {
+  // Not Purchased / Enrollment Gate Screen
+  if (notEnrolledData) {
+    const isFree = notEnrolledData.price === 0;
+
     return (
-      <div className="min-h-screen bg-[#1C1D1F] text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-[#2D2F31] border border-red-500/40 rounded-2xl p-6 text-center shadow-2xl">
-          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
-          <h2 className="text-xl font-bold text-white mb-2">Access Notice</h2>
-          <p className="text-sm text-zinc-300 mb-6">{errorNotice}</p>
-          <div className="flex gap-3 justify-center">
-            <Link to="/my-learning" className="px-4 py-2 rounded-xl bg-zinc-700 text-white text-xs font-bold hover:bg-zinc-600">
-              Back to My Learning
-            </Link>
-            <Link to={`/webinars/${courseId}?register=true`} className="px-4 py-2 rounded-xl btn-primary text-xs font-bold">
-              Complete Enrollment
+      <div className="min-h-screen bg-[#FAF5F7] py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="max-w-2xl w-full bg-white rounded-3xl border border-[#F1D3DE] shadow-xl overflow-hidden p-8 sm:p-10 space-y-6">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#970747] uppercase tracking-wider">
+            <Lock className="w-4 h-4" />
+            <span>Course Access Required</span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-6 items-center">
+            <img
+              src={notEnrolledData.thumbnail || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80'}
+              alt={notEnrolledData.title}
+              className="w-full sm:w-56 aspect-video object-cover rounded-2xl shadow-md border border-[#F1D3DE]"
+            />
+            <div className="space-y-2 text-center sm:text-left">
+              <h2 className="text-xl font-black text-[#1C1D1F] font-heading leading-snug">
+                {notEnrolledData.title}
+              </h2>
+              <p className="text-xs text-[#52525B] leading-relaxed">
+                To stream lessons, take required section assessments, and earn your accredited Certificate of Completion, complete your individual enrollment below.
+              </p>
+              <div className="pt-2">
+                <span className="text-2xl font-black text-[#970747]">
+                  {isFree ? 'Free Pass' : `₹${notEnrolledData.price}.00`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-[#FAF5F7] border border-[#F1D3DE] rounded-2xl space-y-2 text-xs text-[#52525B]">
+            <div className="flex items-center gap-2 font-bold text-[#1C1D1F]">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>What is included with individual course purchase:</span>
+            </div>
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+              <li className="flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Full HD lectures & interactive code
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Required section examinations
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Verified Certificate of Completion
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Official Tax Invoice with GST receipt
+              </li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            {isFree ? (
+              <button
+                onClick={handleEnrollFree}
+                disabled={enrollingFree}
+                className="btn-primary flex-1 py-3 px-6 text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {enrollingFree ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
+                <span>Enroll for Free & Start Learning</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleBuyCourse}
+                disabled={initiatingPayment}
+                className="btn-primary flex-1 py-3 px-6 text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {initiatingPayment ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                <span>Buy Now with PhonePe (₹{notEnrolledData.price})</span>
+              </button>
+            )}
+
+            <Link
+              to="/webinars"
+              className="py-3 px-5 text-xs font-bold rounded-xl border border-[#F1D3DE] bg-white hover:bg-[#FAF5F7] text-zinc-700 text-center"
+            >
+              Browse Catalog
             </Link>
           </div>
         </div>
@@ -477,26 +775,25 @@ export default function CoursePlayerPage() {
     );
   }
 
-  const isCurrentCompleted = progress.completedLessonIds.includes(activeLesson?.lessonId);
-
   return (
-    <div className="min-h-screen bg-[#1C1D1F] text-[#F7F9FA] flex flex-col font-sans select-none">
+    <div className="min-h-screen bg-[#1C1D1F] text-white flex flex-col font-sans">
       
-      {/* 1. Dark Top Header Bar (Udemy inspired) */}
-      <header className="h-14 bg-[#1C1D1F] border-b border-[#3E4143] px-4 flex items-center justify-between z-30 shrink-0">
+      {/* 1. Header Bar */}
+      <header className="h-14 bg-[#1C1D1F] border-b border-[#2D2F31] px-4 flex items-center justify-between z-30 shrink-0">
         
-        {/* Left: Brand + Course Title */}
-        <div className="flex items-center gap-3 min-w-0">
-          <Link 
-            to="/my-learning" 
-            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white px-2 py-1.5 rounded-lg hover:bg-[#2D2F31] transition-colors"
-            title="Return to My Learning Dashboard"
+        {/* Left: Back Arrow + Course Title */}
+        <div className="flex items-center gap-3 min-w-0 pr-4">
+          <Link
+            to="/my-learning"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-[#2D2F31] transition-colors shrink-0"
+            title="Back to My Learning"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline font-medium">My learning</span>
+            <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div className="h-4 w-px bg-[#3E4143] hidden sm:block" />
-          <h1 className="text-sm font-bold text-white truncate max-w-xs md:max-w-md lg:max-w-xl">
+
+          <div className="h-5 w-px bg-[#3E4143] shrink-0" />
+
+          <h1 className="text-xs sm:text-sm font-bold text-zinc-100 truncate">
             {courseData?.title}
           </h1>
         </div>
@@ -504,7 +801,7 @@ export default function CoursePlayerPage() {
         {/* Right: Progress Indicator + Share + Mobile Toggle */}
         <div className="flex items-center gap-2.5">
           
-          {/* Progress Circular Pill Dropdown */}
+          {/* Progress Circular Dropdown */}
           <div className="relative">
             <button
               onClick={() => setShowProgressDropdown(!showProgressDropdown)}
@@ -537,35 +834,63 @@ export default function CoursePlayerPage() {
 
             {/* Dropdown Menu */}
             {showProgressDropdown && (
-              <div className="absolute right-0 mt-2 w-64 bg-[#2D2F31] border border-[#3E4143] rounded-xl p-4 shadow-2xl z-50 text-xs">
-                <div className="flex justify-between items-center mb-2">
+              <div className="absolute right-0 mt-2 w-72 bg-[#2D2F31] border border-[#3E4143] rounded-xl p-4 shadow-2xl z-50 text-xs space-y-3">
+                <div className="flex justify-between items-center">
                   <span className="font-bold text-white">Course Progress</span>
                   <span className="text-[#F1D3DE] font-black">{progress.completionPercentage}%</span>
                 </div>
-                <div className="w-full bg-[#1C1D1F] h-2 rounded-full overflow-hidden mb-3">
+                
+                <div className="w-full bg-[#1C1D1F] h-2 rounded-full overflow-hidden">
                   <div 
                     className="bg-gradient-to-r from-[#970747] to-[#C71F6E] h-full transition-all duration-300"
                     style={{ width: `${progress.completionPercentage}%` }}
                   />
                 </div>
-                <p className="text-zinc-300 text-[11px] leading-relaxed">
-                  {progress.completedLessonCount} of {progress.totalTrackableLessonCount} lessons completed
-                </p>
 
-                {progress.completionPercentage === 100 ? (
-                  <div className="mt-3 pt-3 border-t border-[#3E4143] text-center">
+                <div className="space-y-1 text-zinc-300 text-[11px]">
+                  <p>• {progress.completedLessonCount} of {progress.totalTrackableLessonCount} lectures completed</p>
+                  <p>• {progress.passedSectionIds?.length || 0} of {curriculum.length} section assessments passed</p>
+                </div>
+
+                {progress.isCourseCompleted ? (
+                  <div className="pt-2 border-t border-[#3E4143] text-center space-y-2">
                     <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
-                      <Award className="w-4 h-4" /> Certificate Unlocked!
+                      <Award className="w-4 h-4" /> Certificate Ready!
                     </span>
+                    <button
+                      onClick={handleOpenCertificate}
+                      className="btn-primary w-full py-1.5 text-xs font-bold rounded-lg cursor-pointer"
+                    >
+                      View & Download Certificate
+                    </button>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-zinc-400 mt-2">
-                    Complete all {progress.totalTrackableLessonCount} lectures to unlock your verifiable digital certificate.
+                  <p className="text-[10px] text-zinc-400 pt-1 border-t border-[#3E4143]">
+                    Complete all lectures and pass every section quiz (80%+) to earn your accredited Certificate of Completion.
                   </p>
                 )}
+
+                <button
+                  onClick={handleDownloadInvoice}
+                  className="w-full py-1.5 bg-[#1C1D1F] hover:bg-black text-zinc-300 hover:text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors border border-[#3E4143]"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Tax Invoice (PDF)</span>
+                </button>
               </div>
             )}
           </div>
+
+          {/* Certificate Fast Button if 100% complete */}
+          {progress.isCourseCompleted && (
+            <button
+              onClick={handleOpenCertificate}
+              className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Award className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Certificate</span>
+            </button>
+          )}
 
           {/* Share */}
           <button
@@ -599,79 +924,51 @@ export default function CoursePlayerPage() {
             ref={playerContainerRef}
             onMouseEnter={() => setIsHoveringControls(true)}
             onMouseLeave={() => setIsHoveringControls(false)}
-            className="relative w-full aspect-video bg-black flex items-center justify-center group overflow-hidden max-h-[68vh]"
+            className="relative w-full aspect-video bg-black flex items-center justify-center group overflow-hidden select-none"
           >
-            {activeLesson ? (
-              <video
-                ref={videoRef}
-                src={activeLesson.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-software-developer-working-on-code-42841-large.mp4"}
-                poster={courseData?.posterImage || courseData?.thumbnail}
-                onTimeUpdate={handleTimeUpdate}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => {
-                  handleToggleComplete(activeLesson.lessonId, true);
-                  goToNextLesson();
-                }}
-                onClick={togglePlay}
-                className="w-full h-full object-contain cursor-pointer"
-                playsInline
-              />
-            ) : (
-              <div className="text-zinc-500 text-xs">No lesson selected</div>
-            )}
+            <video
+              ref={videoRef}
+              src={activeLesson?.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-software-developer-working-on-code-42841-large.mp4"}
+              onTimeUpdate={handleTimeUpdate}
+              onClick={togglePlay}
+              className="w-full h-full object-contain cursor-pointer"
+              playsInline
+            />
 
-            {/* Big Center Play Button when paused */}
-            {!isPlaying && activeLesson && (
+            {/* Big Center Play Icon overlay when paused */}
+            {!isPlaying && (
               <button
                 onClick={togglePlay}
-                className="absolute inset-0 m-auto w-18 h-18 rounded-full bg-black/60 hover:bg-[#970747]/90 text-white flex items-center justify-center backdrop-blur-xs transition-all transform hover:scale-110 shadow-2xl z-20 cursor-pointer"
+                className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/60 hover:bg-[#970747] text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-2xl"
               >
-                <Play className="w-8 h-8 fill-current ml-1" />
+                <Play className="w-7 h-7 fill-current ml-1" />
               </button>
             )}
 
-            {/* Custom Video Control Overlay */}
-            <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-3 sm:p-4 transition-opacity duration-300 z-20 ${
-              isPlaying && !isHoveringControls ? 'opacity-0' : 'opacity-100'
-            }`}>
-              
-              {/* Progress Seek Bar with Purple fill */}
-              <div className="relative mb-2.5 flex items-center group/seek">
-                <input
-                  type="range"
-                  min="0"
-                  max={duration || 100}
-                  step="0.5"
-                  value={currentTime}
-                  onChange={handleSeek}
-                  className="w-full h-1.5 bg-zinc-600/60 rounded-lg appearance-none cursor-pointer accent-[#970747] hover:h-2.5 transition-all"
-                  style={{
-                    background: `linear-gradient(to right, #970747 ${(currentTime / (duration || 1)) * 100}%, rgba(100, 100, 100, 0.4) ${(currentTime / (duration || 1)) * 100}%)`
-                  }}
-                />
-              </div>
+            {/* Custom Control Bar */}
+            <div 
+              className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 transition-opacity duration-300 flex flex-col gap-2 ${
+                isHoveringControls || !isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              {/* Seekbar */}
+              <input
+                type="range"
+                min="0"
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleSeek}
+                className="w-full h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer accent-[#970747]"
+              />
 
-              {/* Control Buttons Row */}
-              <div className="flex items-center justify-between text-xs text-white">
-                
-                {/* Left Controls */}
+              <div className="flex items-center justify-between text-xs text-zinc-300">
                 <div className="flex items-center gap-3">
-                  <button onClick={togglePlay} className="hover:text-[#F1D3DE] transition-colors cursor-pointer" title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}>
+                  <button onClick={togglePlay} className="hover:text-white cursor-pointer">
                     {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
                   </button>
 
-                  <button onClick={goToPrevLesson} disabled={currentLessonIndex <= 0} className="hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" title="Previous Lesson">
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-
-                  <button onClick={goToNextLesson} disabled={currentLessonIndex >= allLessons.length - 1} className="hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer" title="Next Lesson">
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-
-                  {/* Volume Control */}
-                  <div className="flex items-center gap-1.5 group/vol">
-                    <button onClick={toggleMute} className="hover:text-[#F1D3DE] cursor-pointer">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={toggleMute} className="hover:text-white cursor-pointer">
                       {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
                     </button>
                     <input
@@ -681,40 +978,35 @@ export default function CoursePlayerPage() {
                       step="0.05"
                       value={isMuted ? 0 : volume}
                       onChange={handleVolumeChange}
-                      className="w-16 h-1 bg-zinc-600 rounded-lg accent-[#970747] opacity-75 group-hover/vol:opacity-100 cursor-pointer"
+                      className="w-16 h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer accent-[#970747]"
                     />
                   </div>
 
-                  {/* Time Display */}
-                  <span className="text-[11px] text-zinc-300 font-mono ml-1">
+                  <span className="text-[11px] font-mono">
                     {formatTime(currentTime)} / {formatTime(duration)}
                   </span>
                 </div>
 
-                {/* Right Controls */}
                 <div className="flex items-center gap-3">
-                  
-                  {/* Playback Speed Menu */}
+                  {/* Speed Selector */}
                   <div className="relative">
                     <button
                       onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                      className="font-bold text-[11px] px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                      className="px-2 py-1 rounded hover:bg-white/10 font-mono text-[11px] font-bold"
                     >
                       {playbackSpeed}x
                     </button>
-
                     {showSpeedMenu && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-[#2D2F31] border border-[#3E4143] rounded-lg py-1 shadow-2xl z-30 min-w-20">
-                        {[0.75, 1, 1.25, 1.5, 2].map(speed => (
+                      <div className="absolute bottom-8 right-0 bg-[#2D2F31] border border-[#3E4143] rounded-lg shadow-xl p-1 z-50 text-[11px] flex flex-col min-w-16">
+                        {[0.75, 1, 1.25, 1.5, 2].map(s => (
                           <button
-                            key={speed}
-                            onClick={() => handleSpeedChange(speed)}
-                            className={`w-full px-3 py-1 text-left text-xs hover:bg-[#3E4143] flex items-center justify-between cursor-pointer ${
-                              playbackSpeed === speed ? 'text-[#F1D3DE] font-bold' : 'text-zinc-300'
+                            key={s}
+                            onClick={() => handleSpeedChange(s)}
+                            className={`px-3 py-1 text-left rounded hover:bg-[#3E4143] ${
+                              playbackSpeed === s ? 'text-[#F1D3DE] font-bold' : 'text-zinc-300'
                             }`}
                           >
-                            <span>{speed}x</span>
-                            {playbackSpeed === speed && <Check className="w-3 h-3 text-[#F1D3DE]" />}
+                            {s}x
                           </button>
                         ))}
                       </div>
@@ -722,75 +1014,52 @@ export default function CoursePlayerPage() {
                   </div>
 
                   {/* Fullscreen */}
-                  <button onClick={toggleFullscreen} className="hover:text-[#F1D3DE] transition-colors cursor-pointer" title="Fullscreen">
-                    {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                  <button onClick={toggleFullscreen} className="hover:text-white cursor-pointer">
+                    {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                   </button>
-
                 </div>
-
               </div>
-
             </div>
+
           </div>
 
-          {/* B. Lesson Info & Navigation Banner */}
-          <div className="bg-[#1C1D1F] border-b border-[#3E4143] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-wider text-[#F1D3DE] font-bold">
-                {activeLesson?.sectionTitle || 'Course Curriculum'}
-              </p>
-              <h2 className="text-base sm:text-lg font-black text-white mt-0.5">
-                {activeLesson?.title}
-              </h2>
-            </div>
+          {/* B. Lesson Navigation Strip */}
+          <div className="bg-[#1C1D1F] border-b border-[#2D2F31] px-6 py-3 flex items-center justify-between">
+            <button
+              onClick={goToPrevLesson}
+              disabled={currentLessonIndex <= 0}
+              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-400 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Previous Lecture</span>
+            </button>
 
-            {/* Quick Actions (Mark as Completed & Prev/Next) */}
-            <div className="flex items-center gap-2.5 shrink-0">
-              <button
-                onClick={() => activeLesson && handleToggleComplete(activeLesson.lessonId)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  isCurrentCompleted
-                    ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30'
-                    : 'bg-[#2D2F31] hover:bg-[#3E4143] text-white border border-[#3E4143]'
-                }`}
-              >
-                {isCurrentCompleted ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
-                    <span>Completed</span>
-                  </>
-                ) : (
-                  <>
-                    <Circle className="w-4 h-4 text-zinc-400" />
-                    <span>Mark as complete</span>
-                  </>
-                )}
-              </button>
+            <span className="text-xs font-bold text-zinc-300 truncate max-w-xs sm:max-w-md">
+              {activeLesson?.title || 'Lecture Module'}
+            </span>
 
-              <button
-                onClick={goToNextLesson}
-                disabled={currentLessonIndex >= allLessons.length - 1}
-                className="btn-primary py-2 px-3 text-xs font-bold flex items-center gap-1 rounded-xl shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span>Next</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            <button
+              onClick={goToNextLesson}
+              disabled={currentLessonIndex >= allLessons.length - 1}
+              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-400 cursor-pointer"
+            >
+              <span className="hidden sm:inline">Next Lecture</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* C. Udemy-style Sub-Tabs below Player */}
-          <div className="bg-[#1C1D1F] border-b border-[#3E4143] px-4 flex gap-6 text-xs font-bold">
+          {/* C. Tabs Header Bar */}
+          <div className="bg-[#1C1D1F] border-b border-[#2D2F31] px-6 flex gap-6 overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview' },
               { id: 'notes', label: `Notes (${notes.length})` },
               { id: 'announcements', label: 'Announcements' },
-              { id: 'reviews', label: 'Reviews' },
-              { id: 'tools', label: 'Learning tools' }
+              { id: 'tools', label: 'Learning tools & schedule' }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`py-3.5 border-b-2 transition-all cursor-pointer ${
+                className={`py-3.5 text-xs sm:text-sm font-bold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
                   activeTab === tab.id
                     ? 'border-[#970747] text-white'
                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -804,7 +1073,7 @@ export default function CoursePlayerPage() {
           {/* D. Tab Content Area */}
           <div className="p-6 max-w-4xl space-y-6 text-zinc-300">
             
-            {/* 1. OVERVIEW TAB (Inspired by Screenshot 2 & 3) */}
+            {/* 1. OVERVIEW TAB */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div>
@@ -816,48 +1085,34 @@ export default function CoursePlayerPage() {
                       <Star className="w-4 h-4 fill-current" /> {courseData?.rating || 4.8}
                     </span>
                     <span className="text-zinc-400">({courseData?.reviewsCount || 140} ratings)</span>
-                    <span className="text-zinc-400">{courseData?.learnersCount || 3420} students</span>
                     <span className="text-zinc-400">{courseData?.duration || '2.5 hours total'}</span>
                     <span className="text-zinc-400">Language: {courseData?.language || 'English'}</span>
                   </div>
                 </div>
 
-                {/* Schedule Learning Time Banner (Screenshot 1 & 3) */}
-                <div className="bg-[#2D2F31] border border-[#3E4143] rounded-2xl p-4 flex items-start gap-3.5 shadow-sm">
-                  <div className="w-10 h-10 rounded-xl bg-[#970747]/20 border border-[#970747]/40 text-[#F1D3DE] flex items-center justify-center shrink-0">
-                    <Calendar className="w-5 h-5 text-[#F1D3DE]" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-xs font-bold text-white">Schedule learning time</h4>
-                    <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
-                      Learning a little each day adds up. Research shows that students who make learning a habit are more likely to reach their career goals.
-                    </p>
-                    <button
-                      onClick={() => setActiveTab('tools')}
-                      className="mt-2 text-xs font-bold text-[#F1D3DE] hover:underline"
-                    >
-                      Set learning reminder &rarr;
-                    </button>
-                  </div>
-                </div>
-
-                {/* By the numbers */}
+                {/* Progress Summary Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="bg-[#2D2F31] p-3 rounded-xl border border-[#3E4143]">
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Skill Level</span>
-                    <span className="text-xs font-bold text-white mt-1 block">{courseData?.level || 'All Levels'}</span>
-                  </div>
-                  <div className="bg-[#2D2F31] p-3 rounded-xl border border-[#3E4143]">
                     <span className="text-[10px] text-zinc-400 uppercase font-bold block">Lectures</span>
-                    <span className="text-xs font-bold text-white mt-1 block">{allLessons.length} Lectures</span>
+                    <span className="text-xs font-bold text-white mt-1 block">
+                      {progress.completedLessonCount} / {progress.totalTrackableLessonCount}
+                    </span>
                   </div>
                   <div className="bg-[#2D2F31] p-3 rounded-xl border border-[#3E4143]">
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Video Duration</span>
-                    <span className="text-xs font-bold text-white mt-1 block">{courseData?.duration || '2.5 Hours'}</span>
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Section Quizzes</span>
+                    <span className="text-xs font-bold text-white mt-1 block">
+                      {progress.passedSectionIds?.length || 0} / {curriculum.length} Passed
+                    </span>
                   </div>
                   <div className="bg-[#2D2F31] p-3 rounded-xl border border-[#3E4143]">
-                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Credentials</span>
-                    <span className="text-xs font-bold text-white mt-1 block">Accredited Pass</span>
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Assessment Rule</span>
+                    <span className="text-xs font-bold text-white mt-1 block">80% Passing Score</span>
+                  </div>
+                  <div className="bg-[#2D2F31] p-3 rounded-xl border border-[#3E4143]">
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Credential</span>
+                    <span className="text-xs font-bold text-white mt-1 block">
+                      {progress.isCourseCompleted ? 'Earned' : 'In Progress'}
+                    </span>
                   </div>
                 </div>
 
@@ -865,7 +1120,7 @@ export default function CoursePlayerPage() {
                 {courseData?.outcomes && courseData.outcomes.length > 0 && (
                   <div className="bg-[#2D2F31] border border-[#3E4143] rounded-2xl p-5">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-[#F1D3DE] mb-3">
-                      What you'll learn in this course
+                      Course Curriculum Outcomes
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {courseData.outcomes.map((out, idx) => (
@@ -905,15 +1160,13 @@ export default function CoursePlayerPage() {
               </div>
             )}
 
-            {/* 2. NOTES TAB (Screenshot 4 inspired) */}
+            {/* 2. NOTES TAB */}
             {activeTab === 'notes' && (
               <div className="space-y-6">
-                
-                {/* Note creation input box */}
                 <form onSubmit={handleAddNote} className="bg-[#2D2F31] border border-[#3E4143] rounded-2xl p-4 space-y-3">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-white flex items-center gap-1.5">
-                      Create a new note at <span className="text-[#F1D3DE] bg-[#970747]/20 px-2 py-0.5 rounded font-mono font-bold">{formatTime(currentTime)}</span>
+                      Add note at <span className="text-[#F1D3DE] bg-[#970747]/20 px-2 py-0.5 rounded font-mono font-bold">{formatTime(currentTime)}</span>
                     </span>
                     <span className="text-[11px] text-zinc-400 truncate max-w-xs">{activeLesson?.title}</span>
                   </div>
@@ -922,7 +1175,7 @@ export default function CoursePlayerPage() {
                     rows="3"
                     value={newNoteText}
                     onChange={(e) => setNewNoteText(e.target.value)}
-                    placeholder="Type your personal lesson insight or code note here..."
+                    placeholder="Type your notes or key takeaways here..."
                     className="w-full px-3 py-2 bg-[#1C1D1F] border border-[#3E4143] rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#970747]"
                   />
 
@@ -938,125 +1191,72 @@ export default function CoursePlayerPage() {
                   </div>
                 </form>
 
-                {/* Notes List */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs border-b border-[#3E4143] pb-2">
                     <span className="font-bold text-white">Your Notes ({notes.length})</span>
-                    <span className="text-zinc-400 text-[11px]">Click timestamp to seek video</span>
                   </div>
 
                   {notes.length === 0 ? (
                     <div className="p-8 text-center bg-[#2D2F31]/50 rounded-2xl border border-[#3E4143] space-y-2">
                       <FileText className="w-8 h-8 text-zinc-500 mx-auto" />
-                      <p className="text-xs text-zinc-400">No notes captured yet for this masterclass.</p>
-                      <p className="text-[11px] text-zinc-500">Capture technical concepts, code snippets, and timestamp bookmarks as you watch.</p>
+                      <p className="text-xs text-zinc-400">You haven't added any notes yet.</p>
                     </div>
                   ) : (
-                    notes.map((note) => (
-                      <div key={note._id} className="bg-[#2D2F31] border border-[#3E4143] rounded-xl p-3.5 flex items-start justify-between gap-3 group">
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center gap-2">
-                            {/* Clickable Timestamp Chip */}
-                            <button
-                              onClick={() => {
-                                if (videoRef.current) {
-                                  videoRef.current.currentTime = note.timestampSeconds;
-                                  videoRef.current.play();
-                                  setIsPlaying(true);
-                                }
-                              }}
-                              className="px-2 py-0.5 rounded bg-[#970747] hover:bg-[#750435] text-white font-mono text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                              title="Jump to this video timestamp"
-                            >
-                              <Play className="w-2.5 h-2.5 fill-current" />
-                              <span>{formatTime(note.timestampSeconds)}</span>
-                            </button>
-                            <span className="text-[11px] text-zinc-400 truncate font-medium">{note.lessonTitle}</span>
-                          </div>
-                          <p className="text-xs text-white leading-relaxed whitespace-pre-wrap">{note.text}</p>
+                    notes.map(note => (
+                      <div key={note._id} className="p-4 bg-[#2D2F31] border border-[#3E4143] rounded-xl flex items-start justify-between gap-3 text-xs">
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => {
+                              if (videoRef.current) {
+                                videoRef.current.currentTime = note.timestampSeconds;
+                                setCurrentTime(note.timestampSeconds);
+                              }
+                            }}
+                            className="text-[#F1D3DE] font-mono font-bold bg-[#970747]/20 px-2 py-0.5 rounded hover:underline cursor-pointer"
+                          >
+                            {formatTime(note.timestampSeconds)}
+                          </button>
+                          <p className="text-white mt-1 leading-relaxed">{note.text}</p>
+                          <span className="text-[10px] text-zinc-400 block">{note.lessonTitle}</span>
                         </div>
-
                         <button
                           onClick={() => handleDeleteNote(note._id)}
-                          className="text-zinc-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                          title="Delete note"
+                          className="text-zinc-500 hover:text-red-400 p-1"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     ))
                   )}
                 </div>
-
               </div>
             )}
 
             {/* 3. ANNOUNCEMENTS TAB */}
             {activeTab === 'announcements' && (
               <div className="space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-white">Course Announcements</h4>
                 {(courseData?.announcements || []).map((ann, i) => (
-                  <div key={i} className="bg-[#2D2F31] border border-[#3E4143] rounded-2xl p-5 space-y-3">
+                  <div key={i} className="p-5 bg-[#2D2F31] border border-[#3E4143] rounded-2xl space-y-2 text-xs">
                     <div className="flex items-center gap-3">
-                      <img src={ann.avatar || courseData?.speaker?.avatar} alt={ann.author} className="w-9 h-9 rounded-full object-cover border border-[#970747]" />
+                      <img src={ann.avatar} alt={ann.author} className="w-8 h-8 rounded-full object-cover" />
                       <div>
-                        <h5 className="text-xs font-bold text-white">{ann.author}</h5>
+                        <strong className="text-white block">{ann.author}</strong>
                         <span className="text-[10px] text-zinc-400">{ann.date}</span>
                       </div>
                     </div>
-                    <h5 className="text-sm font-bold text-white">{ann.title}</h5>
-                    <p className="text-xs text-zinc-300 leading-relaxed">{ann.content}</p>
+                    <h4 className="font-bold text-white text-sm pt-1">{ann.title}</h4>
+                    <p className="text-zinc-300 leading-relaxed">{ann.content}</p>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* 4. REVIEWS TAB */}
-            {activeTab === 'reviews' && (
-              <div className="space-y-4">
-                <div className="bg-[#2D2F31] border border-[#3E4143] rounded-2xl p-5 flex items-center gap-6">
-                  <div className="text-center">
-                    <span className="text-4xl font-black text-amber-400 block">{courseData?.rating || 4.8}</span>
-                    <div className="flex text-amber-400 text-xs justify-center my-1">
-                      {[...Array(5)].map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-current" />)}
-                    </div>
-                    <span className="text-[11px] text-zinc-400 font-medium">Course Rating</span>
-                  </div>
-                  <div className="h-12 w-px bg-[#3E4143]" />
-                  <div>
-                    <h5 className="text-xs font-bold text-white">Student Feedback</h5>
-                    <p className="text-[11px] text-zinc-400 mt-1">Verified reviews from cohort participants who completed this curriculum.</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {(courseData?.reviews || []).map((rev, i) => (
-                    <div key={i} className="bg-[#2D2F31] border border-[#3E4143] rounded-xl p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#970747] text-white flex items-center justify-center font-bold text-xs">
-                            {rev.author[0]}
-                          </div>
-                          <span className="text-xs font-bold text-white">{rev.author}</span>
-                        </div>
-                        <span className="text-[10px] text-zinc-400">{rev.date}</span>
-                      </div>
-                      <div className="flex text-amber-400 text-xs">
-                        {[...Array(rev.rating || 5)].map((_, j) => <Star key={j} className="w-3 h-3 fill-current" />)}
-                      </div>
-                      <p className="text-xs text-zinc-300 leading-relaxed">{rev.comment}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 5. LEARNING TOOLS TAB (Screenshot 1 & 3 inspired) */}
+            {/* 4. LEARNING TOOLS TAB */}
             {activeTab === 'tools' && (
               <div className="space-y-6">
                 <div className="bg-[#2D2F31] border border-[#3E4143] rounded-2xl p-5 space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#970747]/20 border border-[#970747]/40 text-[#F1D3DE] flex items-center justify-center">
+                    <div className="w-9 h-9 rounded-xl bg-[#970747]/20 border border-[#970747]/40 text-[#F1D3DE] flex items-center justify-center shrink-0">
                       <Calendar className="w-5 h-5 text-[#F1D3DE]" />
                     </div>
                     <div>
@@ -1113,7 +1313,7 @@ export default function CoursePlayerPage() {
                   </div>
                 </div>
 
-                {/* Lesson Resources & Attachments */}
+                {/* Lesson Resources */}
                 <div className="bg-[#2D2F31] border border-[#3E4143] rounded-2xl p-5 space-y-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-white">Lesson Resources & Downloads</h4>
                   {activeLesson?.resources && activeLesson.resources.length > 0 ? (
@@ -1146,12 +1346,12 @@ export default function CoursePlayerPage() {
 
         </div>
 
-        {/* RIGHT COLUMN: Course Content Curriculum Sidebar (Screenshot 2 inspired) */}
+        {/* RIGHT COLUMN: Course Content Curriculum Sidebar */}
         {sidebarOpen && (
-          <aside className="w-80 sm:w-96 bg-[#1C1D1F] border-l border-[#3E4143] flex flex-col shrink-0 z-20 overflow-hidden">
+          <aside className="w-80 sm:w-96 bg-[#1C1D1F] border-l border-[#2D2F31] flex flex-col shrink-0 z-20 overflow-hidden">
             
             {/* Sidebar Header */}
-            <div className="p-4 border-b border-[#3E4143] flex items-center justify-between shrink-0">
+            <div className="p-4 border-b border-[#2D2F31] flex items-center justify-between shrink-0">
               <h3 className="font-black text-sm text-white">Course content</h3>
               <button
                 onClick={() => setSidebarOpen(false)}
@@ -1168,6 +1368,7 @@ export default function CoursePlayerPage() {
                 const isCollapsed = !!collapsedSections[section.sectionId];
                 const sectionLessons = section.lessons || [];
                 const completedCount = sectionLessons.filter(l => progress.completedLessonIds.includes(l.lessonId)).length;
+                const isSectionLocked = section.isLocked;
 
                 return (
                   <div key={section.sectionId || secIdx} className="border-b border-[#2D2F31]">
@@ -1175,12 +1376,19 @@ export default function CoursePlayerPage() {
                     {/* Section Accordion Header */}
                     <button
                       onClick={() => toggleSection(section.sectionId)}
-                      className="w-full p-4 text-left bg-[#242729] hover:bg-[#2D2F31] transition-colors flex items-center justify-between cursor-pointer"
+                      className={`w-full p-4 text-left transition-colors flex items-center justify-between cursor-pointer ${
+                        isSectionLocked 
+                          ? 'bg-[#18191B] opacity-60' 
+                          : 'bg-[#242729] hover:bg-[#2D2F31]'
+                      }`}
                     >
                       <div className="pr-2">
-                        <h4 className="text-xs font-bold text-white leading-snug">
-                          {section.title}
-                        </h4>
+                        <div className="flex items-center gap-1.5">
+                          {isSectionLocked && <Lock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />}
+                          <h4 className="text-xs font-bold text-white leading-snug">
+                            {section.title}
+                          </h4>
+                        </div>
                         <span className="text-[11px] text-zinc-400 mt-0.5 block font-medium">
                           {completedCount} / {sectionLessons.length} | {section.duration || '20 min'}
                         </span>
@@ -1196,25 +1404,29 @@ export default function CoursePlayerPage() {
                         {sectionLessons.map(lesson => {
                           const isCompleted = progress.completedLessonIds.includes(lesson.lessonId);
                           const isActive = activeLesson?.lessonId === lesson.lessonId;
+                          const isLocked = isSectionLocked || lesson.isLocked;
 
                           return (
                             <div
                               key={lesson.lessonId}
-                              onClick={() => switchLesson(lesson)}
-                              className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors ${
-                                isActive 
-                                  ? 'bg-[#2D2F31] border-l-4 border-[#970747]' 
-                                  : 'hover:bg-[#242729]'
+                              onClick={() => !isLocked && switchLesson(lesson)}
+                              className={`p-3.5 flex items-start gap-3 transition-colors ${
+                                isLocked 
+                                  ? 'opacity-40 cursor-not-allowed'
+                                  : isActive 
+                                    ? 'bg-[#2D2F31] border-l-4 border-[#970747] cursor-pointer' 
+                                    : 'hover:bg-[#242729] cursor-pointer'
                               }`}
                             >
                               {/* Checkbox */}
                               <button
                                 type="button"
+                                disabled={isLocked}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleToggleComplete(lesson.lessonId);
                                 }}
-                                className="mt-0.5 shrink-0 text-zinc-500 hover:text-white cursor-pointer"
+                                className="mt-0.5 shrink-0 text-zinc-500 hover:text-white cursor-pointer disabled:cursor-not-allowed"
                                 title={isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
                               >
                                 {isCompleted ? (
@@ -1239,6 +1451,54 @@ export default function CoursePlayerPage() {
                             </div>
                           );
                         })}
+
+                        {/* Section Assessment Card */}
+                        {section.quiz && (
+                          <div className={`p-3.5 flex items-center justify-between border-t border-[#3E4143] ${
+                            section.quiz.isPassed 
+                              ? 'bg-emerald-950/25 text-emerald-400' 
+                              : section.quiz.isUnlocked 
+                                ? 'bg-[#970747]/15 text-[#F1D3DE]'
+                                : 'opacity-40 text-zinc-500'
+                          }`}>
+                            <div className="flex items-center gap-2.5">
+                              {section.quiz.isPassed ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              ) : section.quiz.isUnlocked ? (
+                                <HelpCircle className="w-4 h-4 text-[#F1D3DE] shrink-0" />
+                              ) : (
+                                <Lock className="w-4 h-4 text-zinc-500 shrink-0" />
+                              )}
+                              <div>
+                                <div className="text-xs font-bold flex items-center gap-1.5">
+                                  <span>Section Assessment</span>
+                                  {section.quiz.isPassed && (
+                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-black">
+                                      {section.quiz.bestScore}% PASSED
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-zinc-400 mt-0.5">
+                                  {section.quiz.isPassed 
+                                    ? 'Assessment requirement satisfied'
+                                    : section.quiz.isUnlocked 
+                                      ? 'Score 80%+ to complete section'
+                                      : 'Complete all section lectures to unlock'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {section.quiz.isUnlocked && (
+                              <button
+                                onClick={() => handleOpenQuiz(section)}
+                                className="btn-primary py-1 px-3 text-[11px] font-bold rounded-lg cursor-pointer shrink-0"
+                              >
+                                {section.quiz.isPassed ? 'Retake' : 'Start Quiz'}
+                              </button>
+                            )}
+                          </div>
+                        )}
+
                       </div>
                     )}
 
@@ -1251,6 +1511,249 @@ export default function CoursePlayerPage() {
         )}
 
       </div>
+
+      {/* 3. Section Quiz Modal */}
+      {activeQuizSection && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#1C1D1F] border border-[#3E4143] rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-[#2D2F31] flex items-center justify-between shrink-0 bg-[#242729]">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#F1D3DE] block">
+                  Knowledge Assessment • 80% Passing Score
+                </span>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  {activeQuizSection.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActiveQuizSection(null)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {quizLoading ? (
+                <div className="py-12 text-center space-y-3">
+                  <div className="w-8 h-8 border-3 border-[#970747] border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs text-zinc-400">Loading assessment questions...</p>
+                </div>
+              ) : quizResult ? (
+                /* Assessment Result View */
+                <div className="space-y-6">
+                  <div className={`p-6 rounded-2xl border text-center space-y-2 ${
+                    quizResult.passed 
+                      ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+                      : 'bg-red-950/30 border-red-500/40 text-red-300'
+                  }`}>
+                    <div className="w-12 h-12 rounded-full mx-auto flex items-center justify-center bg-black/40">
+                      {quizResult.passed ? (
+                        <CheckCircle2 className="w-7 h-7 text-emerald-400" />
+                      ) : (
+                        <AlertCircle className="w-7 h-7 text-red-400" />
+                      )}
+                    </div>
+                    <h4 className="text-lg font-black">
+                      {quizResult.passed ? 'Assessment Passed!' : 'Assessment Not Passed'}
+                    </h4>
+                    <p className="text-xs">
+                      You scored <strong>{quizResult.score}%</strong> ({quizResult.correctCount} of {quizResult.totalQuestions} correct). Required: 80%.
+                    </p>
+                    {quizResult.passed && (
+                      <p className="text-[11px] text-emerald-400 font-bold pt-1">
+                        ✓ Section requirement satisfied. Next section has been unlocked!
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Question Feedback Explanations */}
+                  <div className="space-y-3">
+                    <h5 className="text-xs font-bold uppercase text-zinc-400">Question Review</h5>
+                    {(quizResult.feedback || []).map((fb, idx) => (
+                      <div key={idx} className="p-3.5 rounded-xl bg-[#242729] border border-[#3E4143] text-xs space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
+                            fb.isCorrect ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          <span className={fb.isCorrect ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                            {fb.isCorrect ? 'Correct' : 'Incorrect'}
+                          </span>
+                        </div>
+                        <p className="text-zinc-300 text-[11px] pt-1">{fb.explanation}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : quizData ? (
+                /* Active Quiz Form View */
+                <div className="space-y-6">
+                  <p className="text-xs text-zinc-400">
+                    Select the most accurate response for each question. You must achieve at least 80% to complete this section and unlock the next module.
+                  </p>
+
+                  <div className="space-y-6">
+                    {(quizData.questions || []).map((q, qIdx) => (
+                      <div key={q.questionId} className="bg-[#242729] border border-[#3E4143] rounded-2xl p-4 sm:p-5 space-y-3">
+                        <h4 className="text-xs sm:text-sm font-bold text-white flex items-start gap-2">
+                          <span className="text-[#F1D3DE] font-black">{qIdx + 1}.</span>
+                          <span>{q.questionText}</span>
+                        </h4>
+
+                        <div className="space-y-2">
+                          {q.options.map((opt, optIdx) => {
+                            const isSelected = quizAnswers[q.questionId] === optIdx;
+                            return (
+                              <button
+                                key={optIdx}
+                                type="button"
+                                onClick={() => handleSelectOption(q.questionId, optIdx)}
+                                className={`w-full p-3 rounded-xl text-left text-xs transition-all flex items-center gap-3 cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-[#970747]/20 border border-[#970747] text-white font-semibold'
+                                    : 'bg-[#1C1D1F] border border-[#3E4143] text-zinc-300 hover:border-zinc-500'
+                                }`}
+                              >
+                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                  isSelected ? 'border-[#970747] bg-[#970747]' : 'border-zinc-500'
+                                }`}>
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                                <span>{opt}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 border-t border-[#2D2F31] bg-[#242729] flex justify-end gap-3 shrink-0">
+              {quizResult ? (
+                <div className="flex gap-2">
+                  {!quizResult.passed && (
+                    <button
+                      onClick={() => {
+                        setQuizResult(null);
+                        setQuizAnswers({});
+                      }}
+                      className="px-4 py-2 bg-[#1C1D1F] hover:bg-black text-white text-xs font-bold rounded-xl border border-[#3E4143] cursor-pointer"
+                    >
+                      Retry Assessment
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setActiveQuizSection(null)}
+                    className="btn-primary px-5 py-2 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setActiveQuizSection(null)}
+                    className="px-4 py-2 text-zinc-400 hover:text-white text-xs font-bold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmitQuiz}
+                    disabled={quizSubmitting}
+                    className="btn-primary px-6 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                  >
+                    {quizSubmitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                    <span>Submit Assessment</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 4. Certificate Award Modal */}
+      {certificateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#1C1D1F] border border-[#3E4143] rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl relative space-y-6 text-center">
+            
+            <button
+              onClick={() => setCertificateModalOpen(false)}
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-400 to-amber-600 text-white flex items-center justify-center mx-auto shadow-lg">
+              <Award className="w-9 h-9" />
+            </div>
+
+            <div>
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#F1D3DE] block">
+                Official Credential Awarded
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black text-white mt-1">
+                Certificate of Completion
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                {courseData?.title}
+              </p>
+            </div>
+
+            {certificateLoading ? (
+              <div className="py-6 text-center">
+                <div className="w-8 h-8 border-3 border-[#970747] border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : certificateData ? (
+              <div className="space-y-4">
+                <div className="bg-[#242729] p-4 rounded-2xl border border-[#3E4143] text-left text-xs space-y-2">
+                  <div className="flex justify-between border-b border-[#3E4143] pb-2">
+                    <span className="text-zinc-400">Awarded To</span>
+                    <strong className="text-white">{certificateData.studentName}</strong>
+                  </div>
+                  <div className="flex justify-between border-b border-[#3E4143] pb-2">
+                    <span className="text-zinc-400">Certificate ID</span>
+                    <span className="font-mono text-[#F1D3DE] font-bold">{certificateData.certificateNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Issuing Authority</span>
+                    <span className="text-emerald-400 font-bold">✓ Officially Accredited</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    onClick={handleDownloadCertificate}
+                    className="btn-primary flex-1 py-3 text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Official PDF Certificate</span>
+                  </button>
+
+                  <Link
+                    to={`/verify-certificate/${certificateData.certificateNumber}`}
+                    target="_blank"
+                    className="py-3 px-4 rounded-xl border border-[#3E4143] bg-[#242729] hover:bg-[#2D2F31] text-xs font-bold text-zinc-300 hover:text-white text-center"
+                  >
+                    Verify Publicly
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

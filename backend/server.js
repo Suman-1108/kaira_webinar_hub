@@ -74,6 +74,10 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/instructor', instructorRoutes);
 app.use('/api/v1/instructor', instructorRoutes);
 
+// Public Certificate Verification Endpoint
+const learningController = require('./controllers/learningController');
+app.get(['/api/certificates/verify/:certificateNumber', '/api/v1/certificates/verify/:certificateNumber'], learningController.verifyCertificatePublic);
+
 // Invoices / Receipts endpoint
 app.get(['/api/invoices/:docNumber', '/api/v1/invoices/:docNumber'], async (req, res) => {
   try {

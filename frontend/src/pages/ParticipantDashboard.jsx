@@ -1038,33 +1038,53 @@ function CourseCard({
               {course.progress.completionPercentage}% complete
             </span>
             <span>
-              {course.progress.completedLessonCount} / {course.progress.totalTrackableLessonCount} lessons
+              {course.progress.completedLessonCount} / {course.progress.totalTrackableLessonCount} lectures
             </span>
           </div>
 
-          {/* Rating Stars (Screenshot 1) */}
-          <div className="flex items-center justify-between pt-1 text-[11px]">
-            <div className="flex items-center gap-1 text-amber-500">
-              {[...Array(5)].map((_, i) => (
-                <Star
-                  key={i}
-                  className={`w-3 h-3 ${i < (course.progress.userRating || 5) ? 'fill-current' : 'text-zinc-300'}`}
-                />
-              ))}
-            </div>
-            <span className="text-[#52525B] text-[10px]">
-              {isCompleted ? 'Leave a rating' : 'Your progress'}
-            </span>
+          <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-0.5">
+            <span>{course.progress.passedQuizzesCount || 0} / {course.progress.totalSectionsCount || 3} Quizzes Passed</span>
+            {isCompleted ? (
+              <span className="bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.2 rounded text-[10px]">
+                Completed
+              </span>
+            ) : null}
           </div>
 
-          {/* Continue Learning Button */}
-          <Link
-            to={`/course/${course.courseId}/learn`}
-            className="w-full btn-primary py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 mt-2 shadow-xs"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{course.progress.completionPercentage > 0 ? 'Continue Learning' : 'Start Course'}</span>
-          </Link>
+          {/* Action Buttons: Continue Learning + Certificate/Invoice */}
+          <div className="space-y-1.5 pt-2">
+            <Link
+              to={`/course/${course.courseId}/learn`}
+              className="w-full btn-primary py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-xs"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{course.progress.completionPercentage > 0 ? 'Continue Learning' : 'Start Course'}</span>
+            </Link>
+
+            {isCompleted && (
+              <a
+                href={`/api/learning/certificate/${course.courseId}/download`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-1.5 px-3 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>Download Certificate (PDF)</span>
+              </a>
+            )}
+
+            {course.invoiceAvailable && (
+              <a
+                href={`/api/learning/invoice/${course.courseId}/download`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-1 px-3 text-center text-[10px] font-semibold text-zinc-500 hover:text-[#970747] transition-colors flex items-center justify-center gap-1"
+              >
+                <Download className="w-3 h-3" />
+                <span>Download Tax Invoice (PDF)</span>
+              </a>
+            )}
+          </div>
 
         </div>
 
