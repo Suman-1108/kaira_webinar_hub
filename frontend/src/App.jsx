@@ -1,186 +1,103 @@
-import React, { useState, useEffect } from 'react';
-import Navbar from './components/Navbar';
-import HeroThree from './components/HeroThree';
-import UpcomingWebinars from './components/UpcomingWebinars';
-import PromotionalVideoSection from './components/PromotionalVideoSection';
-import BenefitsSection from './components/BenefitsSection';
-import SpeakersSection from './components/SpeakersSection';
-import HowItWorks from './components/HowItWorks';
-import ContactSection from './components/ContactSection';
-import Footer from './components/Footer';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { CartProvider } from './context/CartContext';
 
-// Modals
-import RegistrationModal from './components/RegistrationModal';
-import SuccessReceiptModal from './components/SuccessReceiptModal';
-import WebinarDetailsModal from './components/WebinarDetailsModal';
-import AdminDashboard from './components/AdminDashboard';
-import AuthModal from './components/AuthModal';
+// Layout
+import Navbar from './components/layout/Navbar';
+import Footer from './components/layout/Footer';
+import CartDrawer from './components/common/CartDrawer';
 
-export default function App() {
-  const [webinars, setWebinars] = useState([]);
-  const [loadingWebinars, setLoadingWebinars] = useState(true);
-  const [activeTab, setActiveTab] = useState('home');
+// Pages
+import HomePage from './pages/HomePage';
+import WebinarsPage from './pages/WebinarsPage';
+import WebinarDetailPage from './pages/WebinarDetailPage';
+import SpeakersPage from './pages/SpeakersPage';
+import ParticipantDashboard from './pages/ParticipantDashboard';
+import CoursePlayerPage from './pages/CoursePlayerPage';
+import InstructorPage from './pages/InstructorPage';
+import AdminPage from './pages/AdminPage';
+import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage } from './pages/AuthPages';
+import { AboutPage, ContactPage, FAQPage, TermsPage, PrivacyPage, RefundPolicyPage } from './pages/StaticPages';
 
-  // Modal triggers
-  const [selectedWebinarForDetails, setSelectedWebinarForDetails] = useState(null);
-  const [selectedWebinarForReg, setSelectedWebinarForReg] = useState(null);
-  const [verifiedPassId, setVerifiedPassId] = useState(null);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
-
-  // Fetch webinars from backend API
-  const fetchWebinars = async () => {
-    try {
-      setLoadingWebinars(true);
-      const res = await fetch('/api/webinars');
-      const data = await res.json();
-      if (data.success && data.data) {
-        setWebinars(data.data);
-      }
-    } catch (err) {
-      console.warn('Backend fetch error, using client fallback:', err);
-    } finally {
-      setLoadingWebinars(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchWebinars();
-  }, []);
-
-  const scrollToSection = (id) => {
-    setActiveTab(id);
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const handleRegisterClick = (webinar) => {
-    setSelectedWebinarForReg(webinar);
-  };
-
-  const handleRegistrationSuccess = (registrationId) => {
-    setSelectedWebinarForReg(null);
-    setSelectedWebinarForDetails(null);
-    setVerifiedPassId(registrationId);
-  };
+function AppShell() {
+  const location = useLocation();
+  const isPlayerRoute = location.pathname.startsWith('/course/') || location.pathname.startsWith('/learn/');
 
   return (
-    <div className="min-h-screen bg-white text-[#25171E] flex flex-col font-sans">
+    <div className="min-h-screen bg-white text-[#1C1D1F] flex flex-col font-sans selection:bg-[#970747] selection:text-white overflow-x-hidden">
       
-      {/* 1. Sticky Burgundy Navigation Bar */}
-      <Navbar
-        activeTab={activeTab}
-        onSelectTab={scrollToSection}
-        onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenAdmin={() => setIsAdminOpen(true)}
-      />
+      {/* Global Slide-Over Drawer for Cart and Wishlist */}
+      {!isPlayerRoute && <CartDrawer />}
 
+      {/* 1. Global Udemy-Inspired Navbar */}
+      {!isPlayerRoute && <Navbar />}
+
+      {/* 2. Main Routed View Area */}
       <main className="flex-1">
-        {/* 2. Interactive Hero with Three.js */}
-        <section id="home">
-          <HeroThree
-            onExploreClick={() => scrollToSection('webinars')}
-            onWatchPreviewClick={() => {
-              const el = document.getElementById('promo-video');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }}
-          />
-        </section>
+        <Routes>
+          {/* Public Discovery Routes */}
+          <Route path="/" element={<HomePage />} />
+          <Route path="/webinars" element={<WebinarsPage />} />
+          <Route path="/webinars/:slug" element={<WebinarDetailPage />} />
+          <Route path="/webinars/:slug/register" element={<WebinarDetailPage />} />
+          <Route path="/speakers" element={<SpeakersPage />} />
+          <Route path="/speakers/:slug" element={<SpeakersPage />} />
 
-        {/* 3. Upcoming Webinars with Filters & Search */}
-        <UpcomingWebinars
-          webinars={webinars}
-          loading={loadingWebinars}
-          onSelectWebinar={(w) => setSelectedWebinarForDetails(w)}
-          onRegisterClick={handleRegisterClick}
-        />
+          {/* Static & Informational */}
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/faq" element={<FAQPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/refund-policy" element={<RefundPolicyPage />} />
 
-        {/* 4. Promotional Video Section */}
-        <div id="promo-video">
-          <PromotionalVideoSection
-            onRegisterClick={() => {
-              if (webinars.length > 0) {
-                handleRegisterClick(webinars[0]);
-              } else {
-                scrollToSection('webinars');
-              }
-            }}
-          />
-        </div>
+          {/* Authentication */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
-        {/* 5. Benefits & Core Features */}
-        <BenefitsSection />
+          {/* Student Portal & Learning Hub */}
+          <Route path="/my-learning" element={<ParticipantDashboard defaultTab="all" />} />
+          <Route path="/my-events" element={<ParticipantDashboard defaultTab="invoices" />} />
+          <Route path="/my-invoices" element={<ParticipantDashboard defaultTab="invoices" />} />
+          <Route path="/my-account" element={<ParticipantDashboard defaultTab="profile" />} />
+          <Route path="/my-account/profile" element={<ParticipantDashboard defaultTab="profile" />} />
+          <Route path="/registration/confirmation/:registrationId" element={<ParticipantDashboard defaultTab="invoices" />} />
 
-        {/* 6. Real Verified Speakers */}
-        <SpeakersSection />
+          {/* Dedicated Course Player (Udemy Inspired) */}
+          <Route path="/course/:courseId/learn" element={<CoursePlayerPage />} />
+          <Route path="/learn/:courseId" element={<CoursePlayerPage />} />
 
-        {/* 7. How It Works - 4 Step Flow */}
-        <HowItWorks
-          onExploreClick={() => scrollToSection('webinars')}
-        />
+          {/* Dedicated Seller / Instructor Portal */}
+          <Route path="/instructor" element={<InstructorPage />} />
+          <Route path="/seller" element={<InstructorPage />} />
 
-        {/* 8. Contact Support & FAQ */}
-        <ContactSection />
+          {/* Admin Console (Strictly Isolated) */}
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/*" element={<AdminPage />} />
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
 
-      {/* 9. Burgundy Footer with Policy Links */}
-      <Footer
-        onNavClick={scrollToSection}
-        onOpenAdmin={() => setIsAdminOpen(true)}
-      />
-
-      {/* MODALS */}
-
-      {/* Webinar Details Overview Modal */}
-      {selectedWebinarForDetails && (
-        <WebinarDetailsModal
-          webinar={selectedWebinarForDetails}
-          isOpen={!!selectedWebinarForDetails}
-          onClose={() => setSelectedWebinarForDetails(null)}
-          onRegisterClick={(w) => setSelectedWebinarForReg(w)}
-        />
-      )}
-
-      {/* Registration & Razorpay Payment Modal */}
-      {selectedWebinarForReg && (
-        <RegistrationModal
-          webinar={selectedWebinarForReg}
-          isOpen={!!selectedWebinarForReg}
-          onClose={() => setSelectedWebinarForReg(null)}
-          onSuccess={handleRegistrationSuccess}
-        />
-      )}
-
-      {/* Verified Success Entry Pass Modal (Backend Verified) */}
-      {verifiedPassId && (
-        <SuccessReceiptModal
-          registrationId={verifiedPassId}
-          isOpen={!!verifiedPassId}
-          onClose={() => setVerifiedPassId(null)}
-        />
-      )}
-
-      {/* Attendee Pass Lookup & Admin Login Modal */}
-      {isAuthOpen && (
-        <AuthModal
-          isOpen={isAuthOpen}
-          onClose={() => setIsAuthOpen(false)}
-          onViewPass={(passId) => setVerifiedPassId(passId)}
-          onOpenAdmin={() => setIsAdminOpen(true)}
-        />
-      )}
-
-      {/* Admin Operations & Analytics Dashboard */}
-      {isAdminOpen && (
-        <AdminDashboard
-          isOpen={isAdminOpen}
-          onClose={() => setIsAdminOpen(false)}
-          onWebinarsUpdated={fetchWebinars}
-        />
-      )}
+      {/* 3. Global Footer */}
+      {!isPlayerRoute && <Footer />}
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <CartProvider>
+        <BrowserRouter>
+          <AppShell />
+        </BrowserRouter>
+      </CartProvider>
+    </AuthProvider>
   );
 }

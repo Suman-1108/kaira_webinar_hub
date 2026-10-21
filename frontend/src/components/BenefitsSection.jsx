@@ -40,28 +40,28 @@ export default function BenefitsSection() {
     {
       icon: Video,
       title: "Event Recordings",
-      description: "Full lifetime access to 4K cloud recordings with chapter-level timestamps, transcripts, and speaker notes."
+      description: "Full lifetime access to cloud recordings with chapter-level timestamps, transcripts, and speaker code repositories."
     }
   ];
 
   return (
     <section id="benefits" className="py-20 bg-white relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="w-full max-w-[1560px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 relative z-10">
         
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto space-y-3 mb-16">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F7DCE8] border border-[#F3A6C4]">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FCE8EF] border border-[#F1D3DE]">
             <Sparkles className="w-4 h-4 text-[#970747]" />
             <span className="text-xs font-bold text-[#970747] tracking-wider uppercase font-mono">
               THE KAIRA PROMISE
             </span>
           </div>
 
-          <h2 className="font-heading font-black text-3xl sm:text-4xl lg:text-5xl text-[#25171E] tracking-tight">
+          <h2 className="font-heading font-black text-3xl sm:text-4xl lg:text-5xl text-[#1C1D1F] tracking-tight">
             Designed for Real-World Impact
           </h2>
 
-          <p className="text-base sm:text-lg text-[#66545D] leading-relaxed">
+          <p className="text-base sm:text-lg text-[#52525B] leading-relaxed">
             Every webinar is crafted to provide immediate, actionable leverage in your day-to-day engineering and business decisions.
           </p>
         </div>
@@ -73,27 +73,27 @@ export default function BenefitsSection() {
             return (
               <div
                 key={index}
-                className="card-kaira p-8 bg-white border border-[#EBDDE4] hover:border-[#F3A6C4] transition-all duration-300 flex flex-col justify-between group"
+                className="p-8 bg-white border border-[#F1D3DE] rounded-2xl hover:border-[#970747] hover:shadow-xl hover:shadow-[#970747]/10 transition-all duration-300 flex flex-col justify-between group"
               >
                 <div className="space-y-4">
                   {/* Icon Box */}
-                  <div className="w-14 h-14 rounded-2xl bg-[#FDF5F8] border border-[#F3A6C4]/60 flex items-center justify-center text-[#970747] group-hover:bg-[#970747] group-hover:text-white transition-colors duration-300 shadow-xs">
+                  <div className="w-14 h-14 rounded-2xl bg-[#FDF6F8] border border-[#F1D3DE] flex items-center justify-center text-[#970747] group-hover:bg-[#970747] group-hover:text-white transition-colors duration-300 shadow-xs">
                     <Icon className="w-7 h-7" />
                   </div>
 
                   {/* Title & Description */}
-                  <h3 className="font-heading font-black text-xl text-[#25171E] group-hover:text-[#970747] transition-colors">
+                  <h3 className="font-heading font-black text-xl text-[#1C1D1F] group-hover:text-[#970747] transition-colors">
                     {benefit.title}
                   </h3>
 
-                  <p className="text-sm text-[#66545D] leading-relaxed">
+                  <p className="text-sm text-[#52525B] leading-relaxed">
                     {benefit.description}
                   </p>
                 </div>
 
-                <div className="pt-6 border-t border-[#FDF5F8] flex items-center gap-2 text-xs font-bold text-[#970747]">
-                  <CheckCircle2 className="w-4 h-4 text-[#D63384]" />
-                  <span>Included with registration</span>
+                <div className="pt-6 border-t border-[#FDF6F8] flex items-center gap-2 text-xs font-bold text-[#970747]">
+                  <CheckCircle2 className="w-4 h-4 text-[#15803D]" />
+                  <span>Included with registration pass</span>
                 </div>
               </div>
             );

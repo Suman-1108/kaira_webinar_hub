@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { 
   X, 
   BarChart3, 
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
+  const { token } = useAuth();
   if (!isOpen) return null;
 
   const [activeTab, setActiveTab] = useState('overview'); // overview | webinars | attendees | notifications | promo
@@ -51,15 +53,16 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
   const loadData = async () => {
     try {
       setLoading(true);
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const [statsRes, attendeesRes, webinarsRes] = await Promise.all([
-        fetch('/api/admin/stats').then(r => r.json()),
-        fetch('/api/admin/registrations').then(r => r.json()),
-        fetch('/api/webinars').then(r => r.json())
+        fetch('/api/admin/stats', { headers }).then(r => r.json()),
+        fetch('/api/admin/registrations', { headers }).then(r => r.json()),
+        fetch('/api/webinars', { headers }).then(r => r.json())
       ]);
 
-      if (statsRes.success) setStats(statsRes.data);
-      if (attendeesRes.success) setAttendees(attendeesRes.data);
-      if (webinarsRes.success) setWebinarsList(webinarsRes.data);
+      if (statsRes && statsRes.success) setStats(statsRes.data);
+      if (attendeesRes && attendeesRes.success) setAttendees(attendeesRes.data);
+      if (webinarsRes && webinarsRes.success) setWebinarsList(webinarsRes.data);
     } catch (err) {
       console.error('Admin load error:', err);
     } finally {
@@ -69,7 +72,7 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [token]);
 
   const handleAddWebinarSubmit = async (e) => {
     e.preventDefault();
@@ -100,7 +103,10 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
 
       const res = await fetch('/api/webinars', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -117,7 +123,10 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
   const handleDeleteWebinar = async (id) => {
     if (!window.confirm('Are you sure you want to remove this webinar?')) return;
     try {
-      await fetch(`/api/webinars/${id}`, { method: 'DELETE' });
+      await fetch(`/api/webinars/${id}`, { 
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       loadData();
       onWebinarsUpdated && onWebinarsUpdated();
     } catch (e) {

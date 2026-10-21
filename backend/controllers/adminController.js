@@ -2,9 +2,10 @@ const storage = require('../services/storage');
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    const [webinars, registrations] = await Promise.all([
+    const [webinars, registrations, notificationJobs] = await Promise.all([
       storage.getWebinars(),
-      storage.getAllRegistrations()
+      storage.getAllRegistrations(),
+      storage.getNotificationJobs()
     ]);
 
     const completedRegs = registrations.filter(r => r.paymentStatus === 'completed');
@@ -15,8 +16,32 @@ exports.getDashboardStats = async (req, res) => {
     // Category distribution
     const categoryCounts = {};
     webinars.forEach(w => {
-      categoryCounts[w.category] = (categoryCounts[w.category] || 0) + 1;
+      const cat = w.category || 'General';
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
     });
+
+    // Integration status checks
+    const integrations = {
+      phonepe: {
+        configured: !!(process.env.PHONEPE_CLIENT_ID && process.env.PHONEPE_CLIENT_SECRET),
+        merchantId: process.env.PHONEPE_MERCHANT_ID || 'M234DRGMCCPVC',
+        clientId: process.env.PHONEPE_CLIENT_ID || 'SU2604151549453655316895',
+        mode: process.env.PHONEPE_ENV || 'production'
+      },
+      razorpay: {
+        configured: !!(process.env.RAZORPAY_KEY_ID && !process.env.RAZORPAY_KEY_ID.includes('your_')),
+        mode: (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_ID.startsWith('rzp_live')) ? 'Production' : 'Test / Simulation',
+        webhookActive: !!process.env.RAZORPAY_WEBHOOK_SECRET
+      },
+      smtp: {
+        configured: !!(process.env.SMTP_HOST || process.env.EMAIL_FROM),
+        sender: process.env.EMAIL_FROM || 'Kaira Webinar Hub <support@kairawebinarhub.com>'
+      },
+      whatsapp: {
+        configured: !!(process.env.META_WHATSAPP_TOKEN || process.env.WHATSAPP_API_TOKEN),
+        verifyTokenSet: !!process.env.META_WHATSAPP_VERIFY_TOKEN
+      }
+    };
 
     res.json({
       success: true,
@@ -29,7 +54,14 @@ exports.getDashboardStats = async (req, res) => {
         totalRevenue,
         currency: 'INR',
         categoryDistribution: categoryCounts,
-        recentRegistrations: registrations.slice(0, 10)
+        recentRegistrations: registrations.slice(0, 10),
+        notificationStats: {
+          totalQueued: notificationJobs.length,
+          sent: notificationJobs.filter(j => j.status === 'sent').length,
+          scheduled: notificationJobs.filter(j => j.status === 'scheduled').length,
+          failed: notificationJobs.filter(j => j.status === 'failed').length
+        },
+        integrations
       }
     });
   } catch (error) {
@@ -47,11 +79,33 @@ exports.getRegistrationsList = async (req, res) => {
   }
 };
 
+exports.getNotificationQueue = async (req, res) => {
+  try {
+    const jobs = await storage.getNotificationJobs();
+    res.json({ success: true, count: jobs.length, data: jobs });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error retrieving notification queue' });
+  }
+};
+
+exports.retryNotificationJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const updated = await storage.updateNotificationJobStatus(jobId, 'sent', {
+      sentAt: new Date(),
+      attemptCount: 1,
+      lastError: ''
+    });
+    res.json({ success: true, message: 'Notification job re-triggered and marked sent.', data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to retry notification job' });
+  }
+};
+
 exports.exportAttendeesCsv = async (req, res) => {
   try {
     const list = await storage.getAllRegistrations();
-    
-    // Build CSV
+
     const headers = [
       'Registration ID',
       'Full Name',
@@ -92,7 +146,7 @@ exports.exportAttendeesCsv = async (req, res) => {
   }
 };
 
-// Promotional video & template settings in memory
+// System configurations
 let systemConfig = {
   promoVideo: {
     title: "AI-Driven Full Stack Architecture 2026 Preview",

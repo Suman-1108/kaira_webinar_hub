@@ -1,43 +1,67 @@
 @import "tailwindcss";
 
 :root {
+  /* Dark Burgundy Master Design Tokens */
   --color-primary-burgundy: #970747;
-  --color-secondary-rose: #D63384;
-  --color-soft-rose: #F3A6C4;
-  --color-blush-bg: #F7DCE8;
-  --color-main-bg: #FFFFFF;
-  --color-section-bg: #FDF5F8;
-  --color-main-text: #25171E;
-  --color-secondary-text: #66545D;
-  --color-border: #EBDDE4;
+  --color-primary-hover: #750435;
+  --color-burgundy-dark: #1A010B;
+  --color-burgundy-deep: #2E0315;
+  --color-burgundy-mid: #550527;
+  --color-burgundy-rich: #720835;
+  --color-burgundy-light: #FCE8EF;
+  --color-burgundy-border: #F1D3DE;
+  --color-burgundy-glow: rgba(151, 7, 71, 0.35);
 
-  --gradient-btn-primary: linear-gradient(110deg, #970747 0%, #D63384 100%);
-  --gradient-btn-primary-hover: linear-gradient(110deg, #80053b 0%, #bf2672 100%);
-  --gradient-hero-decor: radial-gradient(circle at 70% 35%, #F7DCE8 0%, #F3A6C4 35%, #D63384 70%, #970747 100%);
-  --gradient-soft-card: linear-gradient(135deg, #FFFFFF 0%, #FDF5F8 100%);
-  --gradient-subtle-rose: linear-gradient(180deg, #FDF5F8 0%, #FFFFFF 100%);
+  --color-dark-text: #1C1D1F;
+  --color-secondary-text: #52525B;
+  --color-main-bg: #FFFFFF;
+  --color-section-bg: #FDF6F8;
+  --color-border: #F1D3DE;
+  --color-info-panel: #FCE8EF;
+  --color-success: #15803D;
+  --color-warning: #B45309;
+  --color-error: #B91C1C;
+
+  /* Gradients */
+  --gradient-burgundy-hero: linear-gradient(135deg, #18000A 0%, #350317 35%, #580628 70%, #780937 100%);
+  --gradient-burgundy-card: linear-gradient(145deg, #260211 0%, #3D041C 100%);
+  --gradient-burgundy-btn: linear-gradient(135deg, #970747 0%, #750435 100%);
+  --gradient-burgundy-btn-hover: linear-gradient(135deg, #750435 0%, #580226 100%);
 
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+body {
+  background-color: var(--color-main-bg);
+  color: var(--color-dark-text);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
   font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
 }
 
-/* Custom Utilities for the Kaira Design System */
+/* Custom Dark Burgundy Button Utilities */
 .btn-primary {
-  background: linear-gradient(110deg, #970747 0%, #D63384 100%);
+  background: linear-gradient(135deg, #970747 0%, #750435 100%);
   color: #FFFFFF;
-  font-weight: 600;
-  border-radius: 9999px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 14px -2px rgba(151, 7, 71, 0.32);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 14px -2px rgba(151, 7, 71, 0.4);
 }
 
 .btn-primary:hover {
+  background: linear-gradient(135deg, #750435 0%, #580226 100%);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px -2px rgba(151, 7, 71, 0.45);
-  background: linear-gradient(110deg, #80053b 0%, #bf2672 100%);
+  box-shadow: 0 8px 24px -2px rgba(151, 7, 71, 0.55);
 }
 
 .btn-primary:active {
@@ -45,53 +69,106 @@ h1, h2, h3, h4, h5, h6, .font-heading {
 }
 
 .btn-secondary {
-  background: #FFFFFF;
-  color: #970747;
-  border: 1.5px solid #F3A6C4;
-  font-weight: 600;
-  border-radius: 9999px;
-  transition: all 0.25s ease;
+  background-color: #FFFFFF;
+  color: #1C1D1F;
+  border: 1.5px solid #D1D1D7;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .btn-secondary:hover {
-  background: #FDF5F8;
-  border-color: #D63384;
+  background-color: #FCE8EF;
+  border-color: #970747;
   color: #970747;
 }
 
-.card-kaira {
-  background: #FFFFFF;
-  border: 1px solid #EBDDE4;
-  border-radius: 1.25rem;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 20px -4px rgba(37, 23, 30, 0.04);
-}
-
-.card-kaira:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 30px -6px rgba(151, 7, 71, 0.08);
-  border-color: #F3A6C4;
-}
-
-/* Glass & Soft effects */
-.glass-burgundy {
-  background: rgba(151, 7, 71, 0.94);
+.btn-burgundy-glass {
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-/* Scrollbar */
+.btn-burgundy-glass:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+/* Card utilities */
+.card-course {
+  background: #FFFFFF;
+  border: 1px solid #F1D3DE;
+  border-radius: 8px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.card-course:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 30px -4px rgba(151, 7, 71, 0.15);
+  border-color: #970747;
+}
+
+/* Badges */
+.bestseller-badge {
+  background-color: #ECEB98;
+  color: #3D3C0A;
+  font-weight: 800;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 3px;
+  display: inline-block;
+  letter-spacing: -0.01em;
+}
+
+.featured-badge {
+  background-color: #FCE8EF;
+  color: #970747;
+  font-weight: 800;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.free-badge {
+  background-color: #DCFCE7;
+  color: #15803D;
+  font-weight: 800;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+/* Custom Burgundy Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-track {
-  background: #FDF5F8;
+  background: #FDF6F8;
 }
 ::-webkit-scrollbar-thumb {
-  background: #F3A6C4;
-  border-radius: 4px;
+  background: #E8BFCE;
+  border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #D63384;
+  background: #970747;
 }

@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { X, User, Lock, Search, ArrowRight, ShieldCheck, Ticket } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) {
+  const { login } = useAuth();
   if (!isOpen) return null;
 
   const [mode, setMode] = useState('lookup'); // 'lookup' or 'admin'
   const [passId, setPassId] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleLookup = (e) => {
     e.preventDefault();
@@ -21,14 +24,19 @@ export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) 
     onViewPass(id);
   };
 
-  const handleAdminLogin = (e) => {
+  const handleAdminLogin = async (e) => {
     e.preventDefault();
-    // Simple demo admin credentials
-    if (adminPassword === 'admin123' || adminPassword === 'kaira2026') {
+    setErrorMsg('');
+    setLoading(true);
+
+    try {
+      await login('admin@kairawebinarhub.com', adminPassword);
       onClose();
       onOpenAdmin();
-    } else {
-      setErrorMsg('Invalid password. Default demo key is "kaira2026" or "admin123"');
+    } catch (err) {
+      setErrorMsg(err.message || 'Invalid administrator password.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -40,7 +48,7 @@ export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) 
         <div className="bg-[#970747] p-6 text-white text-center relative">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -59,36 +67,39 @@ export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) 
           </p>
         </div>
 
-        {/* Tab switcher */}
+        {/* Mode Switcher Tabs */}
         <div className="flex border-b border-[#EBDDE4] bg-[#FDF5F8]">
           <button
             onClick={() => { setMode('lookup'); setErrorMsg(''); }}
-            className={`flex-1 py-3 text-xs font-bold transition-colors ${
+            className={`flex-1 py-3 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
               mode === 'lookup' 
-                ? 'bg-white text-[#970747] border-b-2 border-[#970747]' 
+                ? 'text-[#970747] border-b-2 border-[#970747] bg-white' 
                 : 'text-[#66545D] hover:text-[#970747]'
             }`}
           >
-            Find My Ticket / Pass
+            <Search className="w-3.5 h-3.5" />
+            <span>Pass Lookup</span>
           </button>
+
           <button
             onClick={() => { setMode('admin'); setErrorMsg(''); }}
-            className={`flex-1 py-3 text-xs font-bold transition-colors ${
+            className={`flex-1 py-3 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
               mode === 'admin' 
-                ? 'bg-white text-[#970747] border-b-2 border-[#970747]' 
+                ? 'text-[#970747] border-b-2 border-[#970747] bg-white' 
                 : 'text-[#66545D] hover:text-[#970747]'
             }`}
           >
-            Administrator Login
+            <Lock className="w-3.5 h-3.5" />
+            <span>Admin Console</span>
           </button>
         </div>
 
-        {/* Body Content */}
-        <div className="p-6 text-left space-y-4">
-          
+        {/* Content Body */}
+        <div className="p-6">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
-              {errorMsg}
+            <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
@@ -109,8 +120,8 @@ export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) 
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#EBDDE4] text-xs font-mono uppercase focus:outline-none focus:border-[#970747]"
                   />
                 </div>
-                <p className="text-[11px] text-[#66545D] mt-1">
-                  Sent to your registered email and WhatsApp after booking. Try sample: <code className="font-bold text-[#970747]">KWH-2026-8941</code>
+                <p className="text-[10px] text-[#66545D] mt-1">
+                  Check your confirmation email for the 13-character Pass ID.
                 </p>
               </div>
 
@@ -135,7 +146,7 @@ export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) 
                     required
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
-                    placeholder="Enter admin password (demo: kaira2026)"
+                    placeholder="Enter administrator password"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#EBDDE4] text-xs focus:outline-none focus:border-[#970747]"
                   />
                 </div>
@@ -143,14 +154,19 @@ export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) 
 
               <button
                 type="submit"
-                className="btn-primary w-full py-3 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
+                disabled={loading}
+                className="btn-primary w-full py-3 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
-                <span>Access Management Dashboard</span>
+                <span>{loading ? 'Authenticating...' : 'Access Management Dashboard'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
 
+          <div className="mt-6 pt-4 border-t border-[#EBDDE4] flex items-center justify-center gap-2 text-[11px] text-[#66545D]">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Secured with cryptographic ticket verification</span>
+          </div>
         </div>
 
       </div>

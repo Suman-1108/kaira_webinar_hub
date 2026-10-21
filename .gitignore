@@ -30,3 +30,8 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Agent / Scratch / MCP
+.playwright-mcp/
+scratch/
+hero_aligned_*.png

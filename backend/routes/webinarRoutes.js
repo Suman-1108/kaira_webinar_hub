@@ -1,17 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const {
-  getWebinars,
-  getWebinarById,
-  createWebinar,
-  updateWebinar,
-  deleteWebinar
-} = require('../controllers/webinarController');
+const webinarController = require('../controllers/webinarController');
 
-router.get('/', getWebinars);
-router.get('/:id', getWebinarById);
-router.post('/', createWebinar);
-router.put('/:id', updateWebinar);
-router.delete('/:id', deleteWebinar);
+router.get('/', webinarController.getWebinars);
+router.get('/categories', webinarController.getCategories);
+router.get('/speakers', webinarController.getSpeakers);
+router.get('/:identifier', webinarController.getWebinarByIdOrSlug);
+
+router.post('/', webinarController.createWebinar);
+router.put('/:id', webinarController.updateWebinar);
+router.delete('/:id', webinarController.deleteWebinar);
 
 module.exports = router;

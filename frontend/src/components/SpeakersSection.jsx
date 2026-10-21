@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Award, CheckCircle, ExternalLink, Globe } from 'lucide-react';
+import { Sparkles, Award, CheckCircle, ExternalLink, Globe, Star } from 'lucide-react';
 
 export default function SpeakersSection() {
   const speakers = [
@@ -46,23 +46,23 @@ export default function SpeakersSection() {
   ];
 
   return (
-    <section id="about" className="py-20 bg-[#FDF5F8] border-b border-[#EBDDE4] relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+    <section id="about" className="py-20 bg-[#FDF6F8] border-b border-[#F1D3DE] relative">
+      <div className="w-full max-w-[1560px] mx-auto px-4 sm:px-8 lg:px-12 xl:px-16 relative z-10">
         
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto space-y-3 mb-16">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#F7DCE8] border border-[#F3A6C4]">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FCE8EF] border border-[#F1D3DE]">
             <Sparkles className="w-4 h-4 text-[#970747]" />
             <span className="text-xs font-bold text-[#970747] tracking-wider uppercase font-mono">
               VERIFIED PRACTITIONERS
             </span>
           </div>
 
-          <h2 className="font-heading font-black text-3xl sm:text-4xl lg:text-5xl text-[#25171E] tracking-tight">
+          <h2 className="font-heading font-black text-3xl sm:text-4xl lg:text-5xl text-[#1C1D1F] tracking-tight">
             Learn From Proven Leaders
           </h2>
 
-          <p className="text-base sm:text-lg text-[#66545D] leading-relaxed">
+          <p className="text-base sm:text-lg text-[#52525B] leading-relaxed">
             Our instructors don't teach from outdated slides. They teach from live production codebases and years of hard-won execution.
           </p>
         </div>
@@ -72,10 +72,10 @@ export default function SpeakersSection() {
           {speakers.map((speaker, index) => (
             <div
               key={index}
-              className="card-kaira bg-white overflow-hidden flex flex-col justify-between border border-[#EBDDE4] hover:border-[#F3A6C4] transition-all duration-300 group"
+              className="bg-white rounded-2xl overflow-hidden flex flex-col justify-between border border-[#F1D3DE] hover:border-[#970747] hover:shadow-xl hover:shadow-[#970747]/10 transition-all duration-300 group"
             >
               {/* Speaker Photo */}
-              <div className="relative h-64 w-full bg-[#F7DCE8] overflow-hidden">
+              <div className="relative h-64 w-full bg-[#FCE8EF] overflow-hidden">
                 <img
                   src={speaker.avatar}
                   alt={speaker.name}
@@ -85,8 +85,8 @@ export default function SpeakersSection() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
                 {/* Rating Badge */}
-                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-2.5 py-1 rounded-full text-xs font-bold text-[#970747] shadow-xs flex items-center gap-1">
-                  <span>★</span>
+                <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-xs font-bold text-[#970747] shadow-xs flex items-center gap-1">
+                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
                   <span>{speaker.rating}</span>
                 </div>
 
@@ -101,21 +101,21 @@ export default function SpeakersSection() {
               {/* Bio & Details */}
               <div className="p-6 flex-1 flex flex-col justify-between space-y-4 text-left">
                 <div className="space-y-1.5">
-                  <h3 className="font-heading font-black text-lg text-[#25171E] group-hover:text-[#970747] transition-colors">
+                  <h3 className="font-heading font-black text-lg text-[#1C1D1F] group-hover:text-[#970747] transition-colors">
                     {speaker.name}
                   </h3>
-                  <p className="text-xs font-semibold text-[#D63384]">
+                  <p className="text-xs font-bold text-[#970747]">
                     {speaker.role}
                   </p>
-                  <p className="text-xs text-[#66545D] leading-relaxed pt-2 line-clamp-3">
+                  <p className="text-xs text-[#52525B] leading-relaxed pt-2 line-clamp-3">
                     {speaker.bio}
                   </p>
                 </div>
 
                 {/* Expertise tag */}
-                <div className="pt-3 border-t border-[#FDF5F8]">
+                <div className="pt-3 border-t border-[#FDF6F8]">
                   <p className="text-[11px] font-bold text-[#970747] uppercase tracking-wide">
-                    Focus: <span className="text-[#25171E] font-normal normal-case">{speaker.expertise}</span>
+                    Focus: <span className="text-[#1C1D1F] font-normal normal-case">{speaker.expertise}</span>
                   </p>
                 </div>
               </div>

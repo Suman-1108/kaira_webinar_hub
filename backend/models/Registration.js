@@ -16,6 +16,8 @@ const registrationSchema = new mongoose.Schema({
   razorpayOrderId: { type: String, default: '' },
   razorpayPaymentId: { type: String, default: '' },
   razorpaySignature: { type: String, default: '' },
+  phonepeMerchantTransactionId: { type: String, default: '' },
+  phonepeTransactionId: { type: String, default: '' },
   verifiedAt: { type: Date },
   whatsappOptIn: { type: Boolean, default: true },
   emailNotificationSent: { type: Boolean, default: false },
