@@ -56,7 +56,7 @@ export function FAQPage() {
   const faqs = [
     {
       q: "How do I access the live stream once I register?",
-      a: "Upon successful registration (free or paid), you will immediately receive an email confirmation and a WhatsApp notification containing your personalized 1-click meeting access link and unique pass ID. You can also view it anytime inside 'My Events'."
+      a: "Upon successful registration (free or paid), you will immediately receive an email confirmation containing your personalized 1-click meeting access link, unique pass ID, and PDF tax invoice. You can also view it anytime inside 'My Learning'."
     },
     {
       q: "Are session recordings and code repositories provided?",
@@ -64,7 +64,7 @@ export function FAQPage() {
     },
     {
       q: "What payment methods are supported?",
-      a: "We integrate Razorpay supporting UPI (Google Pay, PhonePe, Paytm), credit/debit cards, net banking, and corporate team billing."
+      a: "We integrate PhonePe PG v2 Standard Checkout supporting UPI (Google Pay, PhonePe, Paytm, BHIM), QR code scan, credit/debit cards, and net banking."
     },
     {
       q: "What is your refund policy?",
@@ -233,7 +233,7 @@ export function PrivacyPage() {
           At Kaira Webinar Hub, we prioritize participant data security. We do not sell or rent personal information to third parties.
         </p>
         <h3 className="text-lg font-bold text-[#1C1D1F] pt-4">1. Data We Collect</h3>
-        <p>We collect your name, email address, phone number (for WhatsApp session alerts when permitted), and payment transaction metadata necessary for invoice generation.</p>
+        <p>We collect your name, email address, phone number (for session alerts and ticket verification), and payment transaction metadata necessary for invoice generation.</p>
         <h3 className="text-lg font-bold text-[#1C1D1F] pt-4">2. Communication Preferences</h3>
         <p>Participants retain full control over notification preferences and may opt out of promotional messages at any time while retaining transactional event reminders.</p>
       </div>

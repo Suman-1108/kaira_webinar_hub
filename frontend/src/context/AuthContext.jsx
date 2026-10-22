@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { getApiUrl } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -15,17 +16,23 @@ export function AuthProvider({ children }) {
         return;
       }
       try {
-        const res = await fetch('/api/v1/auth/me', {
+        const res = await fetch(getApiUrl('/api/v1/auth/me'), {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const data = await res.json();
+        if (!res.ok) {
+          logout();
+          setLoading(false);
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
         if (data.success && data.user) {
           setUser(data.user);
         } else {
           logout();
         }
       } catch (err) {
-        console.warn('Auth check error, using cached session if available');
+        console.warn('Auth check error, clearing invalid session');
+        logout();
       } finally {
         setLoading(false);
       }
@@ -36,15 +43,22 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const res = await fetch('/api/v1/auth/login', {
+      const res = await fetch(getApiUrl('/api/v1/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        const err = new Error(data.message || 'Invalid email or password.');
-        err.requiresVerification = data.requiresVerification;
+        let msg = data.message;
+        if (!msg) {
+          if (res.status === 401) msg = 'Invalid email or password. Please check your credentials.';
+          else if (res.status === 403) msg = 'Your email address is not verified. Please verify your email with OTP.';
+          else if (res.status === 400) msg = 'Please enter both your email address and password.';
+          else msg = 'Server encountered an error during login. Please try again later.';
+        }
+        const err = new Error(msg);
+        err.requiresVerification = data.requiresVerification || res.status === 403;
         err.email = data.email || email;
         err.status = res.status;
         throw err;
@@ -60,15 +74,18 @@ export function AuthProvider({ children }) {
 
   const register = async (name, email, password, phone = '') => {
     try {
-      const res = await fetch('/api/v1/auth/register', {
+      const res = await fetch(getApiUrl('/api/v1/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, phone })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         const err = new Error(data.message || 'Registration failed.');
         err.status = res.status;
+        err.conflict = res.status === 409 || data.conflict;
+        err.requiresVerification = data.requiresVerification;
+        err.email = data.email || email;
         throw err;
       }
       return data;
@@ -79,7 +96,7 @@ export function AuthProvider({ children }) {
 
   const verifyOtp = async (email, otp) => {
     try {
-      const res = await fetch('/api/v1/auth/verify-otp', {
+      const res = await fetch(getApiUrl('/api/v1/auth/verify-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp })
@@ -101,7 +118,7 @@ export function AuthProvider({ children }) {
 
   const resendOtp = async (email) => {
     try {
-      const res = await fetch('/api/v1/auth/resend-otp', {
+      const res = await fetch(getApiUrl('/api/v1/auth/resend-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -109,6 +126,82 @@ export function AuthProvider({ children }) {
       const data = await res.json();
       if (!res.ok || !data.success) {
         const err = new Error(data.message || 'Failed to resend code.');
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const forgotPassword = async (email) => {
+    try {
+      const res = await fetch(getApiUrl('/api/v1/auth/forgot-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const err = new Error(data.message || 'Failed to send reset code.');
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const verifyResetOtp = async (email, otp) => {
+    try {
+      const res = await fetch(getApiUrl('/api/v1/auth/verify-reset-otp'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const err = new Error(data.message || 'Invalid or expired code.');
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const resendResetOtp = async (email) => {
+    try {
+      const res = await fetch(getApiUrl('/api/v1/auth/resend-reset-otp'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const err = new Error(data.message || 'Failed to resend reset code.');
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const resetPassword = async (resetToken, newPassword) => {
+    try {
+      const res = await fetch(getApiUrl('/api/v1/auth/reset-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetToken, newPassword })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const err = new Error(data.message || 'Failed to reset password.');
         err.status = res.status;
         throw err;
       }
@@ -137,6 +230,10 @@ export function AuthProvider({ children }) {
       register,
       verifyOtp,
       resendOtp,
+      forgotPassword,
+      verifyResetOtp,
+      resendResetOtp,
+      resetPassword,
       logout,
       updateUser
     }}>

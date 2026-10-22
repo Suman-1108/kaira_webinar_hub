@@ -186,11 +186,11 @@ export default function SuccessReceiptModal({ registrationId, isOpen, onClose })
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[#F7DCE8] border border-[#F3A6C4] text-[#970747] text-xs flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-[#970747] shrink-0" />
+                <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-[#5f259f] text-xs flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#5f259f] shrink-0" />
                   <div>
-                    <p className="font-bold">WhatsApp Reminder</p>
-                    <p className="text-[10px] text-[#66545D]">Scheduled to +91 {receipt.phone}</p>
+                    <p className="font-bold">Pass Secured</p>
+                    <p className="text-[10px] text-[#5f259f]/80">PhonePe PG v2 / Verified</p>
                   </div>
                 </div>
               </div>

@@ -16,10 +16,12 @@ const getPhonePeConfig = () => {
     merchantId: process.env.PHONEPE_MERCHANT_ID || '',
     env,
     envStr,
-    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5174',
+    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
     backendUrl: process.env.BACKEND_URL || 'http://localhost:5001'
   };
 };
+
+
 
 let cachedClient = null;
 
@@ -57,12 +59,14 @@ const initiatePhonePePayment = async ({
 }) => {
   const config = getPhonePeConfig();
   
-  // Format merchant order ID (alphanumeric + underscore, limit <= 36 chars)
-  const cleanRegId = String(registrationId).replace(/[^a-zA-Z0-9]/g, '').slice(-12);
-  const merchantOrderId = `ORD_${cleanRegId}_${Date.now()}`.slice(0, 36);
+  // Format merchant order ID (alphanumeric + underscore only, limit <= 36 chars)
+  const cleanRegId = String(registrationId || 'KWH').replace(/[^a-zA-Z0-9]/g, '').slice(-10);
+  const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const merchantOrderId = `ORD_${cleanRegId}_${Date.now()}_${randomSuffix}`.slice(0, 36);
   const amountInPaise = Math.round(Number(amount) * 100);
 
-  const redirectUrl = `${config.frontendUrl}/my-learning?payment=success&regId=${encodeURIComponent(registrationId)}&orderId=${encodeURIComponent(merchantOrderId)}`;
+  // Never pre-declare payment=success on redirect: actual verification is mandatory upon callback
+  const redirectUrl = `${config.frontendUrl}/my-learning?payment=callback&regId=${encodeURIComponent(registrationId)}&orderId=${encodeURIComponent(merchantOrderId)}`;
 
   try {
     const client = getClient();
@@ -72,9 +76,12 @@ const initiatePhonePePayment = async ({
       .redirectUrl(redirectUrl);
 
     if (webinarTitle) {
-      payRequestBuilder.message(`Pass for ${webinarTitle.slice(0, 50)}`);
+      payRequestBuilder.message(`Pass for ${String(webinarTitle).slice(0, 45)}`);
     }
 
+    // Standard PG v2 Checkout: do not attach prefillUserLoginDetails so PhonePe renders
+    // the universal web checkout UI (QR, UPI apps, Cards, NetBanking) cleanly without
+    // attempting deep-linking or custom scheme launches (e.g. ppe://linkinstruments).
     const payRequest = payRequestBuilder.build();
     console.log(`[PhonePe SDK] Initiating standard pay request for order: ${merchantOrderId} (${config.envStr} mode)`);
     
@@ -91,12 +98,20 @@ const initiatePhonePePayment = async ({
       mode: config.envStr.toLowerCase()
     };
   } catch (err) {
-    console.error(`[PhonePe SDK Error] Pay initiation failed: ${err.message}`);
+    const httpStatus = err.httpStatusCode || err.status || err.response?.status || 'UNKNOWN';
+    const providerCode = err.code || err.errorCode || err.response?.data?.code || 'N/A';
+    const providerMessage = err.message || err.response?.data?.message || 'Payment initiation failed';
+    
+    // Safely log error without printing secrets, auth headers, or raw tokens
+    console.error(`[PhonePe SDK Error] Pay initiation failed [orderId: ${merchantOrderId}, status: ${httpStatus}, code: ${providerCode}]: ${providerMessage}`);
+    
     return {
       success: false,
       merchantTransactionId: merchantOrderId,
       merchantOrderId,
-      message: err.message || 'PhonePe payment could not be initiated.'
+      httpStatus,
+      errorCode: providerCode,
+      message: providerMessage || 'PhonePe payment checkout could not be initiated.'
     };
   }
 };
@@ -119,10 +134,15 @@ const checkPhonePeStatus = async (merchantOrderId) => {
       raw: statusResponse
     };
   } catch (err) {
-    console.error('[PhonePe Status Check Error]:', err.message);
+    const httpStatus = err.httpStatusCode || err.status || err.response?.status || 'UNKNOWN';
+    const providerCode = err.code || err.errorCode || err.response?.data?.code || 'N/A';
+    console.error(`[PhonePe Status Check Error] Status query failed [orderId: ${merchantOrderId}, status: ${httpStatus}, code: ${providerCode}]: ${err.message}`);
+    
     return {
       success: false,
       state: 'FAILED',
+      httpStatus,
+      errorCode: providerCode,
       message: err.message
     };
   }

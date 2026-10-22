@@ -26,20 +26,23 @@ exports.getDashboardStats = async (req, res) => {
         configured: !!(process.env.PHONEPE_CLIENT_ID && process.env.PHONEPE_CLIENT_SECRET),
         merchantId: process.env.PHONEPE_MERCHANT_ID || 'M234DRGMCCPVC',
         clientId: process.env.PHONEPE_CLIENT_ID || 'SU2604151549453655316895',
-        mode: process.env.PHONEPE_ENV || 'production'
+        mode: process.env.PHONEPE_ENV || 'PRODUCTION',
+        status: 'Active (Official PG v2 SDK)'
       },
       razorpay: {
-        configured: !!(process.env.RAZORPAY_KEY_ID && !process.env.RAZORPAY_KEY_ID.includes('your_')),
-        mode: (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_ID.startsWith('rzp_live')) ? 'Production' : 'Test / Simulation',
-        webhookActive: !!process.env.RAZORPAY_WEBHOOK_SECRET
+        configured: false,
+        mode: 'Disabled',
+        status: 'Inactive (PhonePe PG v2 Primary)'
       },
       smtp: {
         configured: !!(process.env.SMTP_HOST || process.env.EMAIL_FROM),
-        sender: process.env.EMAIL_FROM || 'Kaira Webinar Hub <support@kairawebinarhub.com>'
+        sender: process.env.EMAIL_FROM || 'Kaira Webinar Hub <support@kairawebinarhub.com>',
+        status: 'Active (Gmail SMTP Verified)'
       },
       whatsapp: {
-        configured: !!(process.env.META_WHATSAPP_TOKEN || process.env.WHATSAPP_API_TOKEN),
-        verifyTokenSet: !!process.env.META_WHATSAPP_VERIFY_TOKEN
+        configured: false,
+        mode: 'Disabled',
+        status: 'Inactive (SMTP Email Primary)'
       }
     };
 
@@ -117,7 +120,7 @@ exports.exportAttendeesCsv = async (req, res) => {
       'Payment Status',
       'Payment Method',
       'Invoice Number',
-      'WhatsApp Opt-in',
+      'Email Confirmed',
       'Created Date'
     ];
 
@@ -132,7 +135,7 @@ exports.exportAttendeesCsv = async (req, res) => {
       `"${r.paymentStatus}"`,
       `"${r.paymentMethod}"`,
       `"${r.invoiceNumber || ''}"`,
-      r.whatsappOptIn ? 'YES' : 'NO',
+      r.isEmailVerified !== false ? 'YES' : 'PENDING',
       `"${new Date(r.createdAt).toISOString()}"`
     ]);
 
@@ -162,10 +165,6 @@ let systemConfig = {
   emailTemplate: {
     subject: "Confirmed: Your Kaira Webinar Hub Access Pass for {{webinarTitle}}",
     body: "Hi {{fullName}},\n\nYour registration has been confirmed! Access your virtual seat using your secure link below:\n\nJoining Link: {{joiningLink}}\nRegistration ID: {{registrationId}}\n\nWarm regards,\nKaira Webinar Hub Team"
-  },
-  whatsappTemplate: {
-    name: "kaira_webinar_reminder_v1",
-    body: "🌟 *Kaira Webinar Hub* - Hi {{fullName}}! Your workshop *{{webinarTitle}}* starts soon. Tap here to join live: {{joiningLink}} | Pass: {{registrationId}}"
   }
 };
 

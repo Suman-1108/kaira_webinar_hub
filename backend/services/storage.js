@@ -5,8 +5,12 @@ const NotificationJob = require('../models/NotificationJob');
 const EmailVerification = require('../models/EmailVerification');
 const seedWebinars = require('../data/seedWebinars');
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 let memEmailVerifications = [];
+
+const DEFAULT_ADMIN_HASH = bcrypt.hashSync('admin123', 10);
+const DEFAULT_STUDENT_HASH = bcrypt.hashSync('student123', 10);
 
 // In-memory resilient cache with seed data
 let memWebinars = [...seedWebinars];
@@ -16,13 +20,28 @@ let memUsers = [
     id: "usr_admin_001",
     name: "Admin User",
     email: "admin@kairawebinarhub.com",
-    // bcrypt hash of 'admin123'
-    passwordHash: "$2b$10$wT7ssLf3HHgR6yxDzS9TM.XYP2lzydZLm.GChhcegeHBf7vCUAZtS",
+    passwordHash: DEFAULT_ADMIN_HASH,
     role: "admin",
     headline: "Chief Academic Officer & Platform Admin",
     avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80",
     emailVerified: true,
-    notificationPreferences: { email: true, whatsapp: true },
+    accountStatus: "active",
+    notificationPreferences: { email: true },
+    createdAt: new Date()
+  },
+  {
+    _id: "usr_admin_002",
+    id: "usr_admin_002",
+    name: "Suman",
+    email: "hellosuman29@gmail.com",
+    passwordHash: DEFAULT_ADMIN_HASH,
+    role: "admin",
+    headline: "Platform Administrator & Developer",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
+    phone: "9876543210",
+    emailVerified: true,
+    accountStatus: "active",
+    notificationPreferences: { email: true },
     createdAt: new Date()
   },
   {
@@ -30,14 +49,14 @@ let memUsers = [
     id: "usr_demo_002",
     name: "Pooja Sundaram",
     email: "pooja.sundaram@techvision.io",
-    // bcrypt hash of 'student123'
-    passwordHash: "$2b$10$1jmzQE/vr.nGGoZ3DqauuurriDhPN0VJ4kWWI7YmE7C1c94vaw2WG",
-    role: "user",
+    passwordHash: DEFAULT_STUDENT_HASH,
+    role: "student",
     headline: "Senior Software Engineer @ TechVision",
     avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop&q=80",
     phone: "9876543210",
     emailVerified: true,
-    notificationPreferences: { email: true, whatsapp: true },
+    accountStatus: "active",
+    notificationPreferences: { email: true },
     createdAt: new Date()
   }
 ];
@@ -55,13 +74,13 @@ let memRegistrations = [
     amount: 499,
     currency: "INR",
     paymentStatus: "completed",
-    paymentMethod: "razorpay",
-    razorpayOrderId: "order_KWH_seed_01",
-    razorpayPaymentId: "pay_KWH_seed_01",
+    paymentMethod: "phonepe",
+    phonepeMerchantTransactionId: "ORD_KWH_seed_01",
+    phonepeTransactionId: "TXN_KWH_seed_01",
     verifiedAt: new Date(Date.now() - 3600000 * 24),
-    whatsappOptIn: true,
+    whatsappOptIn: false,
     emailNotificationSent: true,
-    whatsappNotificationSent: true,
+    whatsappNotificationSent: false,
     joiningLink: "https://meet.kairahub.live/w/ai-agents?pass=KWH-2026-8941",
     invoiceNumber: "INV-2026-008941",
     createdAt: new Date(Date.now() - 3600000 * 24)
@@ -80,9 +99,9 @@ let memRegistrations = [
     paymentStatus: "completed",
     paymentMethod: "free",
     verifiedAt: new Date(Date.now() - 3600000 * 12),
-    whatsappOptIn: true,
+    whatsappOptIn: false,
     emailNotificationSent: true,
-    whatsappNotificationSent: true,
+    whatsappNotificationSent: false,
     joiningLink: "https://meet.kairahub.live/w/react-19?pass=KWH-2026-8942",
     invoiceNumber: "INV-2026-008942",
     createdAt: new Date(Date.now() - 3600000 * 12)
@@ -97,12 +116,12 @@ let memNotificationJobs = [
     recipientEmail: "pooja.sundaram@techvision.io",
     recipientPhone: "9876543210",
     recipientName: "Pooja Sundaram",
-    channel: "whatsapp",
+    channel: "email",
     templateId: "reminder_24h",
     scheduledAt: new Date(Date.now() + 3600000 * 24),
     status: "scheduled",
     attemptCount: 0,
-    idempotencyKey: "job_KWH-2026-8941_whatsapp_24h",
+    idempotencyKey: "job_KWH-2026-8941_email_24h",
     createdAt: new Date()
   },
   {
@@ -271,7 +290,8 @@ const storage = {
         const seedUser = memUsers.find(u => u.email.toLowerCase() === cleanEmail);
         if (seedUser) {
           try {
-            const created = await User.create(seedUser);
+            const { _id, id, ...cleanSeed } = seedUser;
+            const created = await User.create(cleanSeed);
             return created.toObject ? created.toObject() : created;
           } catch (createErr) {
             return seedUser;
@@ -283,32 +303,42 @@ const storage = {
   },
 
   async findUserById(id) {
+    if (!id) return null;
     if (isDbActive()) {
       try {
-        const found = await User.findById(id).lean();
-        if (found) return found;
+        if (mongoose.Types.ObjectId.isValid(String(id))) {
+          const found = await User.findById(id).lean();
+          if (found) return found;
+        }
       } catch (e) {}
     }
-    return memUsers.find(u => u._id === id || u.id === id) || null;
+    return memUsers.find(u => String(u._id) === String(id) || String(u.id) === String(id)) || null;
   },
 
   async createUser(userData) {
-    const cleanEmail = userData.email.trim().toLowerCase();
+    const cleanEmail = (userData.email || '').trim().toLowerCase();
     const newUser = {
-      _id: `usr_${Date.now()}`,
-      id: `usr_${Date.now()}`,
       ...userData,
       email: cleanEmail,
       createdAt: new Date()
     };
     if (isDbActive()) {
       try {
-        const doc = await User.create(newUser);
-        return doc;
-      } catch (e) {}
+        // Strip custom string _id if present so Mongoose generates a valid ObjectId
+        const { _id, id, ...cleanData } = newUser;
+        const doc = await User.create(cleanData);
+        return doc.toObject ? doc.toObject() : doc;
+      } catch (e) {
+        console.error('[storage.createUser DB Error]:', e.message);
+      }
     }
-    memUsers.unshift(newUser);
-    return newUser;
+    const memUser = {
+      _id: new mongoose.Types.ObjectId().toString(),
+      id: new mongoose.Types.ObjectId().toString(),
+      ...newUser
+    };
+    memUsers.unshift(memUser);
+    return memUser;
   },
 
   async updateUser(id, updateData) {
@@ -364,12 +394,14 @@ const storage = {
     return null;
   },
 
-  // Email Verification (Pending Registrations & OTPs)
+  // Email Verification (Pending Registrations & Password Reset OTPs)
   async saveEmailVerification(data) {
     const cleanEmail = (data.email || '').trim().toLowerCase();
+    const purpose = data.purpose || 'registration';
     const payload = {
       ...data,
       email: cleanEmail,
+      purpose,
       attempts: 0,
       lastSentAt: new Date(),
       expiresAt: data.expiresAt || new Date(Date.now() + 10 * 60 * 1000)
@@ -378,7 +410,7 @@ const storage = {
     if (isDbActive()) {
       try {
         return await EmailVerification.findOneAndUpdate(
-          { email: cleanEmail },
+          { email: cleanEmail, purpose },
           payload,
           { upsert: true, new: true, setDefaultsOnInsert: true }
         );
@@ -387,7 +419,7 @@ const storage = {
       }
     }
 
-    const idx = memEmailVerifications.findIndex(v => v.email === cleanEmail);
+    const idx = memEmailVerifications.findIndex(v => v.email === cleanEmail && (v.purpose || 'registration') === purpose);
     if (idx !== -1) {
       memEmailVerifications[idx] = { ...memEmailVerifications[idx], ...payload };
       return memEmailVerifications[idx];
@@ -396,29 +428,29 @@ const storage = {
     return payload;
   },
 
-  async findEmailVerification(email) {
+  async findEmailVerification(email, purpose = 'registration') {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (isDbActive()) {
       try {
-        const found = await EmailVerification.findOne({ email: cleanEmail }).lean();
+        const found = await EmailVerification.findOne({ email: cleanEmail, purpose }).lean();
         if (found) return found;
       } catch (e) {}
     }
-    return memEmailVerifications.find(v => v.email === cleanEmail) || null;
+    return memEmailVerifications.find(v => v.email === cleanEmail && (v.purpose || 'registration') === purpose) || null;
   },
 
-  async incrementVerificationAttempts(email) {
+  async incrementVerificationAttempts(email, purpose = 'registration') {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (isDbActive()) {
       try {
         return await EmailVerification.findOneAndUpdate(
-          { email: cleanEmail },
+          { email: cleanEmail, purpose },
           { $inc: { attempts: 1 } },
           { new: true }
         );
       } catch (e) {}
     }
-    const record = memEmailVerifications.find(v => v.email === cleanEmail);
+    const record = memEmailVerifications.find(v => v.email === cleanEmail && (v.purpose || 'registration') === purpose);
     if (record) {
       record.attempts = (record.attempts || 0) + 1;
       return record;
@@ -426,7 +458,7 @@ const storage = {
     return null;
   },
 
-  async updateEmailVerificationOtp(email, otpHash, expiresAt) {
+  async updateEmailVerificationOtp(email, otpHash, expiresAt, purpose = 'registration') {
     const cleanEmail = (email || '').trim().toLowerCase();
     const update = {
       otpHash,
@@ -437,13 +469,13 @@ const storage = {
     if (isDbActive()) {
       try {
         return await EmailVerification.findOneAndUpdate(
-          { email: cleanEmail },
+          { email: cleanEmail, purpose },
           { $set: update },
           { new: true }
         );
       } catch (e) {}
     }
-    const record = memEmailVerifications.find(v => v.email === cleanEmail);
+    const record = memEmailVerifications.find(v => v.email === cleanEmail && (v.purpose || 'registration') === purpose);
     if (record) {
       Object.assign(record, update);
       return record;
@@ -451,14 +483,33 @@ const storage = {
     return null;
   },
 
-  async deleteEmailVerification(email) {
+  async setResetTokenHash(email, resetTokenHash) {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (isDbActive()) {
       try {
-        await EmailVerification.deleteOne({ email: cleanEmail });
+        return await EmailVerification.findOneAndUpdate(
+          { email: cleanEmail, purpose: 'password_reset' },
+          { $set: { resetTokenHash } },
+          { new: true }
+        );
       } catch (e) {}
     }
-    memEmailVerifications = memEmailVerifications.filter(v => v.email !== cleanEmail);
+    const record = memEmailVerifications.find(v => v.email === cleanEmail && v.purpose === 'password_reset');
+    if (record) {
+      record.resetTokenHash = resetTokenHash;
+      return record;
+    }
+    return null;
+  },
+
+  async deleteEmailVerification(email, purpose = 'registration') {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (isDbActive()) {
+      try {
+        await EmailVerification.deleteOne({ email: cleanEmail, purpose });
+      } catch (e) {}
+    }
+    memEmailVerifications = memEmailVerifications.filter(v => !(v.email === cleanEmail && (v.purpose || 'registration') === purpose));
     return true;
   }
 };

@@ -150,6 +150,16 @@ export default function AuthModal({ isOpen, onClose, onViewPass, onOpenAdmin }) 
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#EBDDE4] text-xs focus:outline-none focus:border-[#970747]"
                   />
                 </div>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-[10px] text-[#66545D]">Default master passkey: <code className="font-mono font-bold text-[#970747]">admin123</code></span>
+                  <button
+                    type="button"
+                    onClick={() => setAdminPassword('admin123')}
+                    className="text-[10px] text-[#970747] font-bold hover:underline cursor-pointer"
+                  >
+                    Auto Fill
+                  </button>
+                </div>
               </div>
 
               <button

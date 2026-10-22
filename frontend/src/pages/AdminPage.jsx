@@ -295,7 +295,7 @@ export default function AdminPage() {
               <div className="bg-white border border-[#D1D1D7] rounded-lg p-5 shadow-xs">
                 <span className="text-xs font-bold uppercase text-[#52525B]">Total Revenue (INR)</span>
                 <div className="text-2xl font-extrabold text-[#1C1D1F] mt-1">₹{stats.totalRevenue.toLocaleString()}</div>
-                <span className="text-[11px] text-emerald-600 font-semibold">Verified Razorpay Settlements</span>
+                <span className="text-[11px] text-[#5f259f] font-semibold">Verified PhonePe PG v2 Settlements</span>
               </div>
 
               <div className="bg-white border border-[#D1D1D7] rounded-lg p-5 shadow-xs">
@@ -317,31 +317,22 @@ export default function AdminPage() {
                 <div className="text-2xl font-extrabold text-[#15803D] mt-1">
                   {stats.notificationStats?.totalQueued || 0}
                 </div>
-                <span className="text-[11px] text-[#52525B]">WhatsApp & Email Reminders</span>
+                <span className="text-[11px] text-[#52525B]">Automated Email Reminders</span>
               </div>
             </div>
 
-            {/* Integration Statuses (Section 13, 14, 15) */}
+            {/* Integration Statuses */}
             <div className="bg-white border border-[#D1D1D7] rounded-lg p-6 shadow-xs">
               <h3 className="text-sm font-bold uppercase tracking-wider text-[#1C1D1F] mb-4">
                 Platform Integrations Diagnostic
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div className="p-4 rounded border border-emerald-200 bg-emerald-50/60 flex items-start gap-3">
-                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="p-4 rounded border border-purple-200 bg-purple-50/60 flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-[#5f259f] shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold text-[#1C1D1F] block">Razorpay Gateway</span>
-                    <span className="text-emerald-700 font-medium">Mode: {stats.integrations?.razorpay?.mode}</span>
-                    <p className="text-[#52525B] text-[11px] mt-1">HMAC-SHA256 signature verification active.</p>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded border border-[#F1D3DE] bg-[#FCE8EF]/60 flex items-start gap-3">
-                  <MessageSquare className="w-5 h-5 text-[#970747] shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-[#1C1D1F] block">Meta WhatsApp Cloud API</span>
-                    <span className="text-[#750435] font-medium">Webhook Endpoint: Verified</span>
-                    <p className="text-[#52525B] text-[11px] mt-1">Challenge endpoint active on /api/v1/registrations/webhook/whatsapp</p>
+                    <span className="font-bold text-[#1C1D1F] block">PhonePe PG v2 Standard Checkout</span>
+                    <span className="text-purple-700 font-medium">Mode: {stats.integrations?.phonepe?.mode || 'PRODUCTION'}</span>
+                    <p className="text-[#52525B] text-[11px] mt-1">Active payment gateway with cryptographic verification.</p>
                   </div>
                 </div>
 
@@ -350,7 +341,16 @@ export default function AdminPage() {
                   <div>
                     <span className="font-bold text-[#1C1D1F] block">Transactional SMTP</span>
                     <span className="text-blue-700 font-medium">Sender: {stats.integrations?.smtp?.sender}</span>
-                    <p className="text-[#52525B] text-[11px] mt-1">Automated 24h & 1h calendar reminders scheduled.</p>
+                    <p className="text-[#52525B] text-[11px] mt-1">Automated OTP, ticket dispatch & PDF invoice delivery.</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded border border-slate-200 bg-slate-50/60 flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-[#1C1D1F] block">Razorpay & WhatsApp</span>
+                    <span className="text-slate-500 font-medium">Status: Inactive</span>
+                    <p className="text-[#52525B] text-[11px] mt-1">Temporarily disabled. PhonePe PG v2 & SMTP active.</p>
                   </div>
                 </div>
               </div>
@@ -533,7 +533,7 @@ export default function AdminPage() {
             <div className="p-4 border-b border-[#D1D1D7]">
               <h3 className="text-sm font-bold text-[#1C1D1F]">Persistent Notification Reminders Queue</h3>
               <p className="text-xs text-[#52525B] mt-0.5">
-                Tracks scheduled WhatsApp and email reminders. Supports safe retries for transient delivery disruptions.
+                Tracks scheduled automated email reminders and OTP dispatch. Supports safe retries for transient delivery disruptions.
               </p>
             </div>
 

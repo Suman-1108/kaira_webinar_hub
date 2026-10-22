@@ -131,7 +131,7 @@ export default function Footer({ onNavClick, onOpenAdmin }) {
             </h4>
             <ul className="space-y-2 text-xs sm:text-sm text-[#F7DCE8]">
               <li>
-                <a href="#privacy" onClick={(e) => { e.preventDefault(); alert('Kaira Privacy Policy: Your data and WhatsApp credentials are encrypted and never sold.'); }} className="hover:text-white transition-colors">
+                <a href="#privacy" onClick={(e) => { e.preventDefault(); alert('Kaira Privacy Policy: Your data and credentials are encrypted and never sold.'); }} className="hover:text-white transition-colors">
                   Privacy Policy
                 </a>
               </li>
@@ -202,7 +202,7 @@ export default function Footer({ onNavClick, onOpenAdmin }) {
           <p>© {new Date().getFullYear()} Kaira Webinar Hub. All rights reserved.</p>
           <div className="flex items-center gap-2 text-[11px]">
             <ShieldCheck className="w-4 h-4 text-emerald-300" />
-            <span>Burgundy & Rose Pink Theme • Secure Razorpay Verification</span>
+            <span>Burgundy & Rose Pink Theme • Secure PhonePe PG v2 Verification</span>
           </div>
         </div>
 

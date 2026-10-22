@@ -1,25 +1,35 @@
 const nodemailer = require('nodemailer');
 
-// Configure Gmail SMTP Transport
+// Configure SMTP Transport using Environment Variables
+const isSmtpSecure = String(process.env.SMTP_SECURE).toLowerCase() === 'true' || parseInt(process.env.SMTP_PORT || '465', 10) === 465;
+
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '465', 10),
-  secure: true,
+  secure: isSmtpSecure,
   auth: {
     user: process.env.SMTP_USER || '',
     pass: (process.env.SMTP_PASS || '').replace(/\s+/g, '')
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
 /**
- * Verify SMTP connection on startup
+ * Verify SMTP connection on startup with sanitized diagnostic logging
  */
 transporter.verify((error, success) => {
   if (error) {
-    console.warn('[Email Service] Gmail SMTP verification warning:', error.message);
+    console.warn('[Email Service] SMTP verification warning:', {
+      code: error.code,
+      command: error.command,
+      responseCode: error.responseCode,
+      message: error.message
+    });
   } else {
-    console.log('[Email Service] Gmail SMTP Connected & Ready (hellosuman29@gmail.com)');
+    const maskedUser = (process.env.SMTP_USER || '').replace(/(^.{2})(.*)(?=@)/, (m, a, b) => a + '*'.repeat(b.length));
+    console.log(`[Email Service] SMTP Transporter Connected & Ready (${maskedUser || 'configured'})`);
   }
 });
 
@@ -342,7 +352,7 @@ async function sendPaymentSuccessInvoiceEmail({
     month: 'short',
     year: 'numeric'
   });
-  const myLearningUrl = `${process.env.FRONTEND_URL || 'http://localhost:5174'}/my-learning`;
+  const myLearningUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/my-learning`;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -450,10 +460,93 @@ async function sendPaymentSuccessInvoiceEmail({
   }
 }
 
+/**
+ * Send 6-Digit Password Reset OTP
+ */
+async function sendPasswordResetOtpEmail({ to, fullName, otp, expiresMinutes = 10 }) {
+  const sender = process.env.EMAIL_FROM || 'Kaira Webinar Hub <hellosuman29@gmail.com>';
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FAF5F7; margin: 0; padding: 24px; color: #1C1D1F; }
+        .container { max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #F1D3DE; box-shadow: 0 4px 20px rgba(151,7,71,0.08); }
+        .header { background: linear-gradient(135deg, #18000A 0%, #350317 40%, #750435 100%); padding: 32px 24px; text-align: center; color: #ffffff; }
+        .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+        .header p { margin: 6px 0 0 0; color: #FBCFE8; font-size: 13px; }
+        .badge { display: inline-block; background: #970747; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 12px; border-radius: 999px; margin-bottom: 10px; letter-spacing: 1px; }
+        .body { padding: 32px 28px; }
+        .otp-box { background: #FDF6F8; border: 2px dashed #970747; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0; }
+        .otp-label { font-size: 11px; font-weight: 700; color: #71717A; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+        .otp-code { font-size: 34px; font-weight: 900; letter-spacing: 10px; color: #970747; font-family: 'Courier New', Courier, monospace; margin: 8px 0; }
+        .otp-expiry { font-size: 12px; color: #831843; font-weight: 600; }
+        .warning-box { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; border-radius: 6px; margin: 20px 0; font-size: 12px; color: #92400E; line-height: 1.5; }
+        .footer { background: #FAF5F7; padding: 20px 24px; text-align: center; font-size: 11px; color: #71717A; border-top: 1px solid #F1D3DE; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="badge">Account Security</div>
+          <h1>Reset Your Password</h1>
+          <p>Kaira Webinar Hub • Digital Learning Platform</p>
+        </div>
+        <div class="body">
+          <p style="font-size: 15px; margin-top: 0;">Hello <strong>${fullName || 'Learner'}</strong>,</p>
+          <p style="font-size: 14px; color: #52525B; line-height: 1.5;">
+            We received a request to reset the password for your Kaira account (<strong>${to}</strong>). Enter the verification code below in your browser to proceed:
+          </p>
+          
+          <div class="otp-box">
+            <div class="otp-label">Password Reset One-Time Code</div>
+            <div class="otp-code">${otp}</div>
+            <div class="otp-expiry">⏳ Valid for ${expiresMinutes} minutes only</div>
+          </div>
+
+          <div class="warning-box">
+            <strong>Security Notice:</strong> Never share this code with anyone. If you did not request a password reset, you can safely ignore this email. Your account password remains unchanged.
+          </div>
+        </div>
+        <div class="footer">
+          &copy; ${new Date().getFullYear()} Kaira Webinar Hub. All rights reserved.<br>
+          Bengaluru, Karnataka, India • Support: hellosuman29@gmail.com
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: sender,
+      to,
+      subject: `${otp} is your Kaira Webinar Hub password reset code`,
+      text: `Your Kaira Webinar Hub password reset verification code is: ${otp}. This code is valid for ${expiresMinutes} minutes. Never share this code with anyone.\n\nSupport: hellosuman29@gmail.com`,
+      html: htmlContent,
+      headers: {
+        'X-Entity-Ref-ID': `kaira-reset-otp-${Date.now()}`
+      }
+    });
+    console.log(`[Email Service] Password reset OTP email successfully dispatched to ${to} (MessageId: ${info.messageId})`);
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error(`[Email Service] Failed to send password reset OTP email to ${to}:`, {
+      code: err.code,
+      responseCode: err.responseCode,
+      message: err.message
+    });
+    return { success: false, error: err.message, code: err.code };
+  }
+}
+
 module.exports = {
   transporter,
   sendRegistrationConfirmation,
   sendVerificationOtpEmail,
+  sendPasswordResetOtpEmail,
   sendPasswordResetEmail,
   sendEnquiryEmails,
   sendPaymentSuccessInvoiceEmail

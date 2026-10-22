@@ -1,6 +1,14 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+// Process resilience handlers
+process.on('uncaughtException', (err) => {
+  console.error('[Kaira Server Uncaught Exception]:', err && (err.stack || err.message || err));
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Kaira Server Unhandled Rejection]:', reason);
+});
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -26,8 +34,14 @@ app.set('trust proxy', 1);
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-razorpay-signature']
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Set Permissions-Policy for PhonePe PG v2 Standard Checkout
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'payment=(self "https://mercury.phonepe.com" "https://mercury-t2.phonepe.com" "https://api.phonepe.com" "https://cards.phonepe.com")');
+  next();
+});
 
 app.use(express.json({
   limit: '10mb',
@@ -36,6 +50,14 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// URL Normalization: strip duplicate /api/api prefixes if requested by legacy client
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/api/')) {
+    req.url = req.url.replace(/^\/api\/api\//, '/api/');
+  }
+  next();
+});
 
 // Resilient DB connection on startup
 connectDB();
@@ -50,6 +72,7 @@ app.get(['/health', '/api/health', '/api/v1/health'], (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
 
 // API Routes (supporting both legacy /api and versioned /api/v1)
 app.use('/api/auth', authRoutes);
@@ -110,10 +133,10 @@ app.get(['/api/invoices/:docNumber', '/api/v1/invoices/:docNumber'], async (req,
           currency: match.currency || 'INR'
         },
         payment: {
-          method: match.paymentMethod,
+          method: match.paymentMethod || 'phonepe',
           status: match.paymentStatus,
-          orderId: match.razorpayOrderId,
-          paymentId: match.razorpayPaymentId
+          orderId: match.phonepeMerchantTransactionId || match.registrationId,
+          paymentId: match.phonepeTransactionId || match.phonepeMerchantTransactionId || match.registrationId
         },
         issuer: {
           company: 'Kaira Webinar Hub',
@@ -203,10 +226,26 @@ app.get('*', (req, res, next) => {
   const indexPath = path.join(distPath, 'index.html');
   res.sendFile(indexPath, (err) => {
     if (err) {
-      res.status(200).send('Kaira Webinar Hub API is running. Start the frontend Vite server at http://localhost:5174');
+      res.status(200).send('Kaira Webinar Hub API is running. Start the frontend Vite server at http://localhost:5173');
     }
   });
 });
+
+// Global Express Error Handler
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ success: false, message: 'Invalid JSON payload' });
+  }
+  console.error('[Kaira Server Error]', err && (err.stack || err.message || err));
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error'
+  });
+});
+
 
 const PORT = process.env.PORT || 5001;
 
