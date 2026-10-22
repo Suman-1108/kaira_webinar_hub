@@ -24,14 +24,15 @@ import {
   RefreshCw,
   Flame,
   Check,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import SuccessReceiptModal from '../components/SuccessReceiptModal';
 
 export default function ParticipantDashboard({ defaultTab = 'all' }) {
-  const { user, token, updateUser } = useAuth();
+  const { user, token, loading: authLoading, updateUser } = useAuth();
   const { wishlist, removeFromWishlist } = useCart();
   const location = useLocation();
   const navigate = useNavigate();
@@ -54,11 +55,39 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
   const [phone, setPhone] = useState(user?.phone || '');
   const [headline, setHeadline] = useState(user?.headline || '');
   const [emailAlerts, setEmailAlerts] = useState(user?.notificationPreferences?.email ?? true);
-  const [waAlerts, setWaAlerts] = useState(user?.notificationPreferences?.whatsapp ?? true);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Scheduler banner state
   const [showScheduleCard, setShowScheduleCard] = useState(true);
+  // Payment feedback banner state (success / retry / pending)
+  const [paymentNotice, setPaymentNotice] = useState(null);
+  const [retryingPayment, setRetryingPayment] = useState(false);
+
+  // Retry checkout via official PhonePe create-order endpoint
+  const handleRetryPayment = async (targetRegId) => {
+    if (!targetRegId || retryingPayment) return;
+    setRetryingPayment(true);
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/payments/phonepe/create-order', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ registrationId: targetRegId })
+      });
+      const data = await res.json();
+      if (data.success && data.redirectUrl) {
+        window.location.assign(data.redirectUrl);
+      } else {
+        alert(data.message || 'Could not initiate PhonePe payment retry. Please try again shortly.');
+      }
+    } catch (err) {
+      console.error('Payment retry error:', err);
+      alert('Network error while connecting to PhonePe payment gateway.');
+    } finally {
+      setRetryingPayment(false);
+    }
+  };
 
   // Parse path or search tab
   useEffect(() => {
@@ -116,11 +145,11 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
   };
 
   useEffect(() => {
-    if (user && token) {
+    if (!authLoading && user && token) {
       fetchMyCourses();
       fetchRegistrations();
     }
-  }, [user, token]);
+  }, [user, token, authLoading]);
 
   // Handle return redirect from PhonePe payment gateway
   useEffect(() => {
@@ -129,7 +158,8 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
     const regId = params.get('regId');
     const orderId = params.get('orderId') || params.get('txn');
 
-    if (payment === 'success' && (regId || orderId)) {
+    // Trigger verification only if order ID or payment parameter is present
+    if ((payment === 'callback' || payment === 'status' || payment === 'success' || orderId) && (regId || orderId)) {
       const verifyPayment = async () => {
         try {
           const headers = { 'Content-Type': 'application/json' };
@@ -141,13 +171,30 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
             body: JSON.stringify({ registrationId: regId, orderId })
           });
           const json = await res.json();
-          if (json.success) {
+          // Strictly grant access ONLY when backend verification actually returns status: completed
+          if (json.success && json.data?.status === 'completed') {
             setActivePassId(regId || json.data?.registrationId);
+            setPaymentNotice({
+              type: 'success',
+              message: 'PhonePe payment verified successfully! Your masterclass pass and tax invoice have been generated.'
+            });
             fetchMyCourses();
             fetchRegistrations();
+          } else {
+            console.warn('[PhonePe Verification]: Payment not verified as completed:', json.message || json.state);
+            setPaymentNotice({
+              type: 'error',
+              message: json.message || 'PhonePe payment was not completed or was cancelled. Your reservation is safely retained.',
+              regId: regId || orderId
+            });
           }
         } catch (err) {
           console.warn('Payment auto-verify notice:', err);
+          setPaymentNotice({
+            type: 'error',
+            message: 'Unable to verify payment status with PhonePe at this time. Please check your transaction or retry.',
+            regId: regId || orderId
+          });
         }
       };
       verifyPayment();
@@ -237,7 +284,7 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
           name,
           phone,
           headline,
-          notificationPreferences: { email: emailAlerts, whatsapp: waAlerts }
+          notificationPreferences: { email: emailAlerts }
         })
       });
       const data = await res.json();
@@ -331,6 +378,54 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
 
       {/* 2. Main Tabbed Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        {/* Payment Verification Feedback Alert */}
+        {paymentNotice && (
+          <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs ${
+            paymentNotice.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+              : 'bg-rose-50 border-rose-200 text-rose-950'
+          }`}>
+            <div className="flex items-start sm:items-center gap-3">
+              {paymentNotice.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5 sm:mt-0" />
+              )}
+              <div>
+                <p className="text-xs sm:text-sm font-bold font-heading">
+                  {paymentNotice.type === 'success' ? 'Payment Verified Successfully' : 'Payment Status: Incomplete / Cancelled'}
+                </p>
+                <p className="text-xs opacity-90 mt-0.5 leading-relaxed">{paymentNotice.message}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              {paymentNotice.regId && paymentNotice.type === 'error' && (
+                <button
+                  onClick={() => handleRetryPayment(paymentNotice.regId)}
+                  disabled={retryingPayment}
+                  className="px-3.5 py-1.5 bg-[#970747] hover:bg-[#750435] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {retryingPayment ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Opening PhonePe...</span>
+                    </>
+                  ) : (
+                    <span>Retry Checkout with PhonePe</span>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={() => setPaymentNotice(null)}
+                className="p-1 rounded-lg hover:bg-black/5 text-gray-500 hover:text-gray-700 cursor-pointer transition-colors"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
         
         {/* A. Hero Streaks & Learning Scheduler (Matching Screenshot 1) */}
         {activeTab === 'all' && (
@@ -665,13 +760,7 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="emailReminders" defaultChecked className="accent-[#970747]" />
                   <label htmlFor="emailReminders" className="text-xs font-semibold text-[#1C1D1F]">
-                    Send daily learning reminder emails to <strong>{user?.email}</strong>
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="waReminders" defaultChecked className="accent-[#970747]" />
-                  <label htmlFor="waReminders" className="text-xs font-semibold text-[#1C1D1F]">
-                    WhatsApp cohort alerts & lecture updates
+                    Send daily learning reminder emails and milestone updates to <strong>{user?.email}</strong>
                   </label>
                 </div>
               </div>

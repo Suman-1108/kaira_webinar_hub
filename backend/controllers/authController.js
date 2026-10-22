@@ -41,7 +41,7 @@ const generateSecureOtp = () => {
  */
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, phone, role = 'user' } = req.body;
+    const { name, email, password, phone } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -53,6 +53,15 @@ exports.register = async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid email address.'
+      });
+    }
+
     // Password validation against policy
     const pwdValidation = validatePassword(password);
     if (!pwdValidation.isValid) {
@@ -62,12 +71,13 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Check if account already exists
+    // 1. Check whether active verified account already exists in MongoDB
     const existing = await storage.findUserByEmail(cleanEmail);
     if (existing && existing.emailVerified !== false) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
-        message: 'An account with this email already exists. Please log in.'
+        conflict: true,
+        message: 'This email address is already registered. Please log in or reset your password.'
       });
     }
 
@@ -75,22 +85,28 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
+    // 2. Check pending registration rate limiting (60s cooldown)
+    const existingPending = await storage.findEmailVerification(cleanEmail, 'registration');
+    if (existingPending && existingPending.lastSentAt) {
+      const elapsedMs = Date.now() - new Date(existingPending.lastSentAt).getTime();
+      const cooldownMs = 60 * 1000;
+      if (elapsedMs < cooldownMs) {
+        const remainingSec = Math.ceil((cooldownMs - elapsedMs) / 1000);
+        return res.status(429).json({
+          success: false,
+          requiresVerification: true,
+          email: cleanEmail,
+          message: `A verification code was recently sent to your email. Please check your inbox or wait ${remainingSec} seconds.`
+        });
+      }
+    }
+
     // Generate 6-digit cryptographically secure OTP & hash it
     const otp = generateSecureOtp();
     const otpHash = hashOtp(otp);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store in pending verification collection
-    await storage.saveEmailVerification({
-      email: cleanEmail,
-      name: cleanName,
-      passwordHash,
-      phone: phone ? phone.trim() : '',
-      otpHash,
-      expiresAt
-    });
-
-    // Dispatch OTP via SMTP
+    // 3. Dispatch OTP via SMTP before storing pending verification
     const emailResult = await emailService.sendVerificationOtpEmail({
       to: cleanEmail,
       fullName: cleanName,
@@ -99,19 +115,41 @@ exports.register = async (req, res) => {
     });
 
     if (!emailResult.success) {
+      console.error('[Auth] Failed to dispatch registration OTP email to:', cleanEmail, emailResult.error);
       return res.status(500).json({
         success: false,
         message: "We couldn't send your verification email. Please try again shortly."
       });
     }
 
+    // 4. Store in pending verification collection with student role (strictly enforce student)
+    await storage.saveEmailVerification({
+      email: cleanEmail,
+      name: cleanName,
+      passwordHash,
+      phone: phone ? phone.trim() : '',
+      role: 'student',
+      otpHash,
+      expiresAt,
+      purpose: 'registration'
+    });
+
     return res.status(200).json({
       success: true,
-      message: "We've sent a verification code to your email.",
+      message: existing
+        ? "Your account is pending verification. A new verification code has been sent to your email."
+        : "We've sent a verification code to your email.",
       email: cleanEmail,
       requiresVerification: true
     });
   } catch (err) {
+    if (err.code === 11000 || (err.message && err.message.includes('E11000'))) {
+      return res.status(409).json({
+        success: false,
+        conflict: true,
+        message: 'This email address is already registered. Please log in or reset your password.'
+      });
+    }
     console.error('Register error:', err.message);
     return res.status(500).json({
       success: false,
@@ -151,7 +189,7 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    const verificationRecord = await storage.findEmailVerification(cleanEmail);
+    const verificationRecord = await storage.findEmailVerification(cleanEmail, 'registration');
     if (!verificationRecord) {
       return res.status(400).json({
         success: false,
@@ -178,38 +216,55 @@ exports.verifyOtp = async (req, res) => {
     // Compare hash
     const inputHash = hashOtp(cleanOtp);
     if (inputHash !== verificationRecord.otpHash) {
-      await storage.incrementVerificationAttempts(cleanEmail);
+      await storage.incrementVerificationAttempts(cleanEmail, 'registration');
       return res.status(400).json({
         success: false,
         message: 'Invalid verification code. Please check your email and try again.'
       });
     }
 
-    // Correct OTP: Activate or create user account
+    // Correct OTP: Activate or create user account in MongoDB
     let user = await storage.findUserByEmail(cleanEmail);
     if (user) {
       user = await storage.updateUser(user._id || user.id, {
         emailVerified: true,
         emailVerifiedAt: new Date(),
+        accountStatus: 'active',
         passwordHash: verificationRecord.passwordHash,
         name: verificationRecord.name || user.name,
         phone: verificationRecord.phone || user.phone
       });
     } else {
-      user = await storage.createUser({
-        name: verificationRecord.name,
-        email: cleanEmail,
-        passwordHash: verificationRecord.passwordHash,
-        phone: verificationRecord.phone || '',
-        role: 'user',
-        emailVerified: true,
-        emailVerifiedAt: new Date(),
-        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(verificationRecord.name)}`
-      });
+      try {
+        user = await storage.createUser({
+          name: verificationRecord.name,
+          email: cleanEmail,
+          passwordHash: verificationRecord.passwordHash,
+          phone: verificationRecord.phone || '',
+          role: 'student',
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          accountStatus: 'active',
+          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(verificationRecord.name)}`
+        });
+      } catch (createErr) {
+        if (createErr.code === 11000 || (createErr.message && createErr.message.includes('E11000'))) {
+          user = await storage.findUserByEmail(cleanEmail);
+          if (user) {
+            user = await storage.updateUser(user._id || user.id, {
+              emailVerified: true,
+              emailVerifiedAt: new Date(),
+              accountStatus: 'active'
+            });
+          }
+        } else {
+          throw createErr;
+        }
+      }
     }
 
     // Delete verification record to prevent reuse
-    await storage.deleteEmailVerification(cleanEmail);
+    await storage.deleteEmailVerification(cleanEmail, 'registration');
 
     const token = signToken(user);
 
@@ -251,7 +306,7 @@ exports.resendOtp = async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const verificationRecord = await storage.findEmailVerification(cleanEmail);
+    const verificationRecord = await storage.findEmailVerification(cleanEmail, 'registration');
 
     if (!verificationRecord) {
       // Check if user exists and is unverified
@@ -288,7 +343,7 @@ exports.resendOtp = async (req, res) => {
     const newExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     if (verificationRecord) {
-      await storage.updateEmailVerificationOtp(cleanEmail, newOtpHash, newExpiresAt);
+      await storage.updateEmailVerificationOtp(cleanEmail, newOtpHash, newExpiresAt, 'registration');
     } else {
       const existingUser = await storage.findUserByEmail(cleanEmail);
       await storage.saveEmailVerification({
@@ -296,8 +351,10 @@ exports.resendOtp = async (req, res) => {
         name: existingUser.name,
         passwordHash: existingUser.passwordHash,
         phone: existingUser.phone || '',
+        role: 'student',
         otpHash: newOtpHash,
-        expiresAt: newExpiresAt
+        expiresAt: newExpiresAt,
+        purpose: 'registration'
       });
     }
 
@@ -332,8 +389,8 @@ exports.resendOtp = async (req, res) => {
 /**
  * Login:
  * 1. Validate email and password presence
- * 2. Authenticate credentials
- * 3. Guard against unverified accounts (return 403 with requiresVerification: true)
+ * 2. Authenticate credentials via strict bcrypt
+ * 3. Guard against unverified or suspended accounts
  */
 exports.login = async (req, res) => {
   try {
@@ -346,46 +403,44 @@ exports.login = async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     console.log(`[Auth] Login attempt received for: "${cleanEmail}"`);
 
-    // 1. Check if this email is in pending verification
-    const pending = await storage.findEmailVerification(cleanEmail);
-    if (pending) {
-      console.log(`[Auth] User "${cleanEmail}" is still pending OTP verification.`);
-      return res.status(403).json({
-        success: false,
-        requiresVerification: true,
-        email: cleanEmail,
-        message: 'Your email address is pending verification. Please enter the verification code sent to your inbox to activate your account.'
-      });
-    }
-
-    // 2. Find user in database
+    // 1. Find user in database
     const user = await storage.findUserByEmail(cleanEmail);
     if (!user) {
-      console.log(`[Auth] User not found for email: "${cleanEmail}". Neither registered nor pending.`);
+      console.log(`[Auth] User not found for email: "${cleanEmail}".`);
+      const pending = await storage.findEmailVerification(cleanEmail, 'registration');
+      if (pending) {
+        return res.status(403).json({
+          success: false,
+          requiresVerification: true,
+          email: cleanEmail,
+          message: 'Your email address is pending verification. Please enter the verification code sent to your inbox to activate your account.'
+        });
+      }
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
-    // 3. Check if user account in database is unverified
-    if (user.emailVerified === false) {
-      console.log(`[Auth] User "${cleanEmail}" account is marked unverified.`);
+    // 2. Check if account is suspended
+    if (user.accountStatus === 'suspended') {
       return res.status(403).json({
         success: false,
-        requiresVerification: true,
-        email: user.email,
-        message: 'Your email address is not verified. Please verify your email to log in.'
+        message: 'Your account has been suspended. Please contact support at support@kairawebinarhub.com.'
       });
     }
 
-    // 4. Authenticate password
+    // 3. Authenticate password - strictly bcrypt comparison
+    if (!user.passwordHash) {
+      console.log(`[Auth] User "${cleanEmail}" has missing password hash.`);
+      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-    const isMasterDemo = (password === 'admin123' && user.role === 'admin') || (password === 'student123');
-    if (!isMatch && !isMasterDemo) {
+    if (!isMatch) {
       console.log(`[Auth] Password mismatch for: "${cleanEmail}".`);
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
     console.log(`[Auth] Login successful for: "${cleanEmail}" (${user.role}).`);
 
-    // Check email verification status
+    // 4. Check email verification status
     if (user.emailVerified === false) {
       return res.status(403).json({
         success: false,
@@ -431,7 +486,7 @@ exports.getMe = async (req, res) => {
 
     const user = await storage.findUserById(decoded.id);
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
+      return res.status(401).json({ success: false, message: 'User account not found or session expired.' });
     }
 
     return res.json({
@@ -480,63 +535,351 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// Forgot Password Flow
+/**
+ * 4. Forgot Password (Initiate Password Reset with 6-digit OTP):
+ * - Generic response to prevent email enumeration
+ * - Generates 6-digit OTP, hashed with SHA-256
+ * - 10-minute expiry, 60s resend cooldown
+ * - Dispatches email via Gmail SMTP
+ */
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Please provide your email address.' });
+    }
 
     const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+    }
+
+    const genericSuccess = {
+      success: true,
+      message: 'If an account exists with that email, a verification code has been sent.'
+    };
+
+    // Find user in database
     const user = await storage.findUserByEmail(cleanEmail);
     if (!user) {
-      // For security, don't reveal user existence
-      return res.json({
-        success: true,
-        message: 'If that email exists in our system, password reset instructions have been sent.'
+      // Generic response to avoid email enumeration
+      return res.status(200).json(genericSuccess);
+    }
+
+    // Check rate limit / resend cooldown (60 seconds)
+    const existingReset = await storage.findEmailVerification(cleanEmail, 'password_reset');
+    if (existingReset && existingReset.lastSentAt) {
+      const elapsedMs = Date.now() - new Date(existingReset.lastSentAt).getTime();
+      const cooldownMs = 60 * 1000;
+      if (elapsedMs < cooldownMs) {
+        const remainingSec = Math.ceil((cooldownMs - elapsedMs) / 1000);
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${remainingSec} seconds before requesting a new code.`
+        });
+      }
+    }
+
+    const otp = generateSecureOtp();
+    const otpHash = hashOtp(otp);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Send email via Gmail SMTP first
+    const emailResult = await emailService.sendPasswordResetOtpEmail({
+      to: cleanEmail,
+      fullName: user.name,
+      otp,
+      expiresMinutes: 10
+    });
+
+    if (!emailResult.success) {
+      console.error('[Auth] Failed to send password reset OTP to:', cleanEmail, {
+        code: emailResult.code,
+        error: emailResult.error
+      });
+      // Invalidate/remove any pending OTP record so unauthorized reset cannot occur
+      await storage.deleteEmailVerification(cleanEmail, 'password_reset');
+      return res.status(500).json({
+        success: false,
+        message: "We couldn't deliver the verification code to your email. Please try again shortly."
       });
     }
 
-    // Create temporary token
-    const resetToken = jwt.sign({ id: user._id || user.id, email: user.email }, JWT_SECRET, { expiresIn: '1h' });
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
-    const resetLink = `${frontendUrl}/reset-password/${resetToken}`;
-
-    // Send email via Gmail SMTP
-    emailService.sendPasswordResetEmail({
-      to: user.email,
-      resetLink
-    }).catch(err => console.warn('[Password Reset Email] Warning:', err.message));
-
-    return res.json({
-      success: true,
-      message: 'Password reset link sent to your email.'
+    // Save verification record only after confirmed email dispatch
+    await storage.saveEmailVerification({
+      email: cleanEmail,
+      name: user.name,
+      otpHash,
+      expiresAt,
+      purpose: 'password_reset'
     });
+
+    return res.status(200).json(genericSuccess);
   } catch (err) {
+    console.error('Forgot password error:', err.message);
     return res.status(500).json({ success: false, message: 'Error processing password reset.' });
   }
 };
 
-// Reset Password
+/**
+ * Resend Password Reset OTP:
+ * Enforces 60-second rate limiting cooldown
+ */
+exports.resendResetOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email address is required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await storage.findUserByEmail(cleanEmail);
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: 'If an account exists with that email, a verification code has been sent.'
+      });
+    }
+
+    const existingReset = await storage.findEmailVerification(cleanEmail, 'password_reset');
+    if (existingReset && existingReset.lastSentAt) {
+      const elapsedMs = Date.now() - new Date(existingReset.lastSentAt).getTime();
+      const cooldownMs = 60 * 1000;
+      if (elapsedMs < cooldownMs) {
+        const remainingSec = Math.ceil((cooldownMs - elapsedMs) / 1000);
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${remainingSec} seconds before requesting a new code.`
+        });
+      }
+    }
+
+    const newOtp = generateSecureOtp();
+    const newOtpHash = hashOtp(newOtp);
+    const newExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    const emailResult = await emailService.sendPasswordResetOtpEmail({
+      to: cleanEmail,
+      fullName: user.name,
+      otp: newOtp,
+      expiresMinutes: 10
+    });
+
+    if (!emailResult.success) {
+      console.error('[Auth] Failed to resend password reset OTP to:', cleanEmail, {
+        code: emailResult.code,
+        error: emailResult.error
+      });
+      return res.status(500).json({
+        success: false,
+        message: "We couldn't deliver the verification code to your email. Please try again shortly."
+      });
+    }
+
+    if (existingReset) {
+      await storage.updateEmailVerificationOtp(cleanEmail, newOtpHash, newExpiresAt, 'password_reset');
+    } else {
+      await storage.saveEmailVerification({
+        email: cleanEmail,
+        name: user.name,
+        otpHash: newOtpHash,
+        expiresAt: newExpiresAt,
+        purpose: 'password_reset'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'A new password reset code has been sent to your email.'
+    });
+  } catch (err) {
+    console.error('Resend reset OTP error:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to resend reset code. Please try again.'
+    });
+  }
+};
+
+/**
+ * 5. Verify Password Reset OTP:
+ * - Validates 6-digit OTP
+ * - Checks max 5 attempts and 10-minute expiry
+ * - Verifies SHA-256 hash
+ * - Issues a single-use signed resetToken (valid 15 minutes)
+ */
+exports.verifyResetOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and verification code are required.'
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = String(otp).trim();
+
+    if (!/^\d{6}$/.test(cleanOtp)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid 6-digit verification code.'
+      });
+    }
+
+    const resetRecord = await storage.findEmailVerification(cleanEmail, 'password_reset');
+    if (!resetRecord) {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending password reset request found for this email. Please request a new code.'
+      });
+    }
+
+    // Check max attempts
+    if (resetRecord.attempts >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed verification attempts. Please request a new code.'
+      });
+    }
+
+    // Check expiration
+    if (new Date() > new Date(resetRecord.expiresAt)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This verification code has expired. Please request a new code.'
+      });
+    }
+
+    // Compare hash
+    const inputHash = hashOtp(cleanOtp);
+    if (inputHash !== resetRecord.otpHash) {
+      await storage.incrementVerificationAttempts(cleanEmail, 'password_reset');
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. Please check your email and try again.'
+      });
+    }
+
+    // Generate single-use reset authorization token
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const resetToken = jwt.sign(
+      { email: cleanEmail, purpose: 'pwd_reset', nonce },
+      JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Store resetTokenHash to ensure single-use
+    await storage.setResetTokenHash(cleanEmail, resetTokenHash);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Verification code confirmed. You can now set a new password.',
+      resetToken
+    });
+  } catch (err) {
+    console.error('Verify reset OTP error:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify reset code. Please try again.'
+    });
+  }
+};
+
+/**
+ * 6. Reset Password:
+ * - Validates single-use reset token and password policy
+ * - Updates existing user's passwordHash using bcrypt
+ * - Preserves existing user ID, role, and profile data
+ * - Invalidates reset token and OTP immediately
+ * - Never creates a second user
+ */
 exports.resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Token and new password are required.' });
+    const { token, resetToken, newPassword } = req.body;
+    const tokenToUse = resetToken || token;
+
+    if (!tokenToUse || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset authorization token and new password are required.'
+      });
     }
 
     // Validate new password with policy
     const pwdValidation = validatePassword(newPassword);
     if (!pwdValidation.isValid) {
-      return res.status(400).json({ success: false, message: pwdValidation.message });
+      return res.status(400).json({
+        success: false,
+        message: pwdValidation.message
+      });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(tokenToUse, JWT_SECRET);
+    } catch (jwtErr) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired password reset authorization. Please request a new code.'
+      });
+    }
+
+    const cleanEmail = (decoded.email || '').trim().toLowerCase();
+    if (!cleanEmail && !decoded.id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid reset authorization token.'
+      });
+    }
+
+    // Validate single-use token against record
+    const resetRecord = cleanEmail ? await storage.findEmailVerification(cleanEmail, 'password_reset') : null;
+    const incomingTokenHash = crypto.createHash('sha256').update(tokenToUse).digest('hex');
+
+    if (!resetRecord || !resetRecord.resetTokenHash || resetRecord.resetTokenHash !== incomingTokenHash) {
+      return res.status(400).json({
+        success: false,
+        message: 'This password reset authorization has already been used or has expired. Please request a new code.'
+      });
+    }
+
+    // Find the existing user in database (preserve ID and role)
+    const user = (cleanEmail ? await storage.findUserByEmail(cleanEmail) : null) || (decoded.id ? await storage.findUserById(decoded.id) : null);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User account not found.'
+      });
+    }
+
+    // Hash new password with bcrypt
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword, salt);
-    await storage.updateUser(decoded.id, { passwordHash });
 
-    return res.json({ success: true, message: 'Password has been reset successfully. You can now login.' });
+    // Update existing user without altering user ID or role
+    await storage.updateUser(user._id || user.id, {
+      passwordHash
+    });
+
+    // Invalidate reset record immediately
+    if (cleanEmail) {
+      await storage.deleteEmailVerification(cleanEmail, 'password_reset');
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password has been successfully updated. You can now log in with your new password.'
+    });
   } catch (err) {
-    return res.status(400).json({ success: false, message: 'Invalid or expired password reset token.' });
+    console.error('Reset password error:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to reset password. Please try again.'
+    });
   }
 };

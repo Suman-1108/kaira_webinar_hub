@@ -3,10 +3,10 @@ const router = express.Router();
 const registrationController = require('../controllers/registrationController');
 const { verifyToken, optionalToken } = require('../middleware/authMiddleware');
 
-// Protected Registration routes - strictly requiring student login
-router.post('/register', verifyToken, registrationController.initiateRegistration);
-router.post('/initiate', verifyToken, registrationController.initiateRegistration);
-router.post('/verify-payment', verifyToken, registrationController.verifyPayment);
+// Registration routes - supports authenticated students and guest registrations with OTP
+router.post('/register', optionalToken, registrationController.initiateRegistration);
+router.post('/initiate', optionalToken, registrationController.initiateRegistration);
+router.post('/verify-payment', optionalToken, registrationController.verifyPayment);
 
 // Single receipt & my-events
 router.get('/receipt/:id', registrationController.getRegistrationReceipt);
@@ -19,7 +19,7 @@ router.post('/phonepe/initiate', verifyToken, registrationController.initiateReg
 router.post('/phonepe/verify', optionalToken, registrationController.verifyPhonePePayment);
 router.post('/phonepe/webhook', registrationController.handlePhonePeWebhook);
 
-// Webhook routes (authenticated via HMAC signatures)
+// Obsolete / Disabled gateway & messaging webhook routes (Safely return HTTP 410 Gone - cannot grant access)
 router.post('/webhook', registrationController.handleRazorpayWebhook);
 router.get('/webhook/whatsapp', registrationController.verifyWhatsAppWebhook);
 router.post('/webhook/whatsapp', registrationController.handleWhatsAppWebhookEvent);

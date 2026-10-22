@@ -4,19 +4,28 @@ const emailVerificationSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
-    unique: true,
     lowercase: true,
     trim: true,
     index: true
   },
+  purpose: {
+    type: String,
+    enum: ['registration', 'password_reset'],
+    default: 'registration',
+    index: true
+  },
   name: {
     type: String,
-    required: true,
+    default: '',
     trim: true
+  },
+  role: {
+    type: String,
+    default: 'student'
   },
   passwordHash: {
     type: String,
-    required: true
+    default: ''
   },
   phone: {
     type: String,
@@ -26,6 +35,10 @@ const emailVerificationSchema = new mongoose.Schema({
   otpHash: {
     type: String,
     required: true
+  },
+  resetTokenHash: {
+    type: String,
+    default: ''
   },
   attempts: {
     type: Number,
@@ -45,5 +58,7 @@ const emailVerificationSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+emailVerificationSchema.index({ email: 1, purpose: 1 }, { unique: true });
 
 module.exports = mongoose.models.EmailVerification || mongoose.model('EmailVerification', emailVerificationSchema);

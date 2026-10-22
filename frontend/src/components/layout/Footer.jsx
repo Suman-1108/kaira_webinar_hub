@@ -106,7 +106,7 @@ export default function Footer() {
               <li><Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link></li>
               <li><Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
               <li><Link to="/refund-policy" className="hover:text-white transition-colors">Refund & Cancellation</Link></li>
-              <li><span className="text-xs text-rose-300 flex items-center gap-1.5 mt-2"><ShieldCheck className="w-4 h-4 text-emerald-400" /> Razorpay Secured 256-Bit</span></li>
+              <li><span className="text-xs text-rose-300 flex items-center gap-1.5 mt-2"><ShieldCheck className="w-4 h-4 text-emerald-400" /> PhonePe PG v2 Secured 256-Bit</span></li>
             </ul>
           </div>
         </div>

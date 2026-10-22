@@ -9,11 +9,21 @@ export default defineConfig({
     react()
   ],
   server: {
-    port: 5174,
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    hmr: {
+      host: 'localhost',
+      clientPort: 5173
+    },
+    headers: {
+      'Permissions-Policy': 'payment=(self "https://mercury.phonepe.com" "https://mercury-t2.phonepe.com" "https://api.phonepe.com" "https://cards.phonepe.com")'
+    },
     proxy: {
       '/api': {
-        target: 'http://localhost:5001',
+        target: 'http://127.0.0.1:5001',
         changeOrigin: true,
+        secure: false,
       }
     }
   }

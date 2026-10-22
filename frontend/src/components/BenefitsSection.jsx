@@ -30,7 +30,7 @@ export default function BenefitsSection() {
     {
       icon: MessageSquare,
       title: "Community Access",
-      description: "Join our vibrant invite-only Discord and WhatsApp channels for ongoing peer reviews, job postings, and discussions."
+      description: "Join our vibrant invite-only Discord and student community channels for ongoing peer reviews, job postings, and discussions."
     },
     {
       icon: FileText,

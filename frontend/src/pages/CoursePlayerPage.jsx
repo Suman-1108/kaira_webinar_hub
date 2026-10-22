@@ -626,13 +626,14 @@ export default function CoursePlayerPage() {
         throw new Error(regData.message || 'Could not initiate registration.');
       }
 
+      const targetRegId = regData.data?.registrationId || regData.registrationId;
       const peRes = await fetch('/api/payments/phonepe/create-order', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ registrationId: regData.registrationId })
+        body: JSON.stringify({ registrationId: targetRegId })
       });
       const peData = await peRes.json();
       if (!peRes.ok || !peData.success || !peData.redirectUrl) {

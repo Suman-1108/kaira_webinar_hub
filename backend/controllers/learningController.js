@@ -865,7 +865,7 @@ exports.getCertificate = async (req, res) => {
 
     // Unique certificate number format: CERT-KWH-2026-XXXXXX
     const certNumber = `CERT-KWH-2026-${(webinar.id || 'CRS').toUpperCase().slice(-4)}-${String(user.id || user._id || 'USR').slice(-4)}`;
-    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5174'}/verify-certificate/${certNumber}`;
+    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-certificate/${certNumber}`;
 
     let certDoc = null;
     if (isDbActive()) {
@@ -970,7 +970,7 @@ exports.downloadCertificatePdf = async (req, res) => {
     }
 
     const certNumber = `CERT-KWH-2026-${(webinar.id || 'CRS').toUpperCase().slice(-4)}-${String(user.id || user._id || 'USR').slice(-4)}`;
-    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5174'}/verify-certificate/${certNumber}`;
+    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-certificate/${certNumber}`;
 
     const pdfBuffer = await pdfService.generateCertificatePdf({
       certificateNumber: certNumber,
@@ -1033,7 +1033,7 @@ exports.downloadInvoicePdf = async (req, res) => {
       amount: reg.amount,
       currency: reg.currency || 'INR',
       paymentMethod: reg.paymentMethod || 'phonepe',
-      transactionId: reg.phonepeTransactionId || reg.razorpayPaymentId || reg.phonepeMerchantTransactionId || '',
+      transactionId: reg.phonepeTransactionId || reg.phonepeMerchantTransactionId || reg.registrationId,
       orderId: reg.registrationId,
       paidAt: reg.verifiedAt || reg.createdAt || new Date()
     });

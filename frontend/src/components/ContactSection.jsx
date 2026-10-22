@@ -205,7 +205,7 @@ export default function ContactSection() {
                   <MessageSquare className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-[11px] text-[#52525B]">WhatsApp Desk</p>
+                  <p className="text-[11px] text-[#52525B]">Student Helpline</p>
                   <p className="text-xs font-bold text-[#1C1D1F]">+91 98412 34567</p>
                 </div>
               </div>

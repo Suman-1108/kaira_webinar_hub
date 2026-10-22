@@ -19,7 +19,7 @@ export default function HowItWorks({ onExploreClick }) {
       num: '03',
       icon: Video,
       title: 'Join the Live Session',
-      desc: 'Receive calendar invites, WhatsApp reminders, and one-click access to interactive live streaming with live Q&A.'
+      desc: 'Receive calendar invites, automated email reminders, and one-click access to interactive live streaming with live Q&A.'
     },
     {
       num: '04',

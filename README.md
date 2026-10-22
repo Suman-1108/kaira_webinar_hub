@@ -48,22 +48,23 @@ The design system incorporates a clean, marketplace-oriented palette:
    - Active pass roster with direct "Join Live" streaming links.
    - Verified pass QR code modal.
    - Invoices & receipts table with instant PDF/printable generation.
-   - Notification preferences (Email & Meta WhatsApp toggles).
+   - Notification preferences (Email notifications & daily learning updates).
 
-5. **Payment Processing (Razorpay)**:
-   - Order creation server-side.
-   - Razorpay test and production checkout modal integration.
-   - Cryptographic HMAC-SHA256 signature verification.
-   - Webhook processor for `payment.captured`.
+5. **Payment Processing (PhonePe PG v2 Standard Checkout)**:
+   - Official `@phonepe-pg/pg-sdk-node` SDK integration.
+   - Server-side standard pay request generation with amount in paise.
+   - Real-time status verification (`COMPLETED`/`SUCCESS`) via `getOrderStatus()`.
+   - Webhook callback processor with idempotency and duplicate fulfillment protection.
 
-6. **Persistent Notification Scheduler & Meta WhatsApp Cloud API**:
-   - Background reminder jobs queue (`registration_confirmation`, `reminder_24h`, `reminder_1h`).
-   - Challenge verification endpoint (`GET /api/v1/registrations/webhook/whatsapp`).
-   - Admin queue viewer with manual re-trigger / retry controls.
+6. **Transactional Messaging & Persistent Notification Scheduler**:
+   - Automated Gmail SMTP / Nodemailer email delivery.
+   - 6-digit registration OTP verification with SHA-256 hashing and 10-minute expiry.
+   - Instant ticket delivery, automated 24h & 1h reminder jobs.
+   - Automated PDF tax invoice attachments upon successful payment.
 
 7. **Admin Management Console (`/admin`)**:
    - Real-time revenue and attendee telemetry.
-   - Integration diagnostic cards (Razorpay, SMTP, WhatsApp).
+   - Integration diagnostic cards (PhonePe PG v2, Gmail SMTP).
    - Webinar CRUD publisher.
    - Attendee database with one-click CSV export.
 
@@ -79,7 +80,7 @@ Kaira_Webinar_hub/
 │   │   │   ├── common/WebinarCard.jsx        # Udemy-style course card with badges & stars
 │   │   │   ├── layout/Navbar.jsx             # Top search bar, Explore categories, Auth
 │   │   │   ├── layout/Footer.jsx             # Newsletter, policy links, trust badges
-│   │   │   ├── RegistrationModal.jsx         # Pass tier selection & Razorpay checkout
+│   │   │   ├── RegistrationModal.jsx         # Pass tier selection & PhonePe PG v2 checkout
 │   │   │   ├── SuccessReceiptModal.jsx       # Verified ticket pass with QR code
 │   │   │   └── ...
 │   │   ├── context/AuthContext.jsx           # Global user authentication session
@@ -122,7 +123,7 @@ npm run dev   # Runs on http://localhost:5001
 ```bash
 cd frontend
 npm install
-npm run dev   # Runs on http://localhost:5174
+npm run dev   # Runs on http://localhost:5173
 ```
 
 ### 3. Build for Production

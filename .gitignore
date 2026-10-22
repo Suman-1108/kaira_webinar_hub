@@ -35,3 +35,5 @@ Thumbs.db
 .playwright-mcp/
 scratch/
 hero_aligned_*.png
+**/temp_video/
+*.mp4

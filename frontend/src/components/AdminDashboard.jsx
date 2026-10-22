@@ -188,7 +188,7 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
             { id: 'overview', label: 'Overview & Revenue', icon: BarChart3 },
             { id: 'attendees', label: 'Attendees & Passes', icon: Users },
             { id: 'webinars', label: 'Webinar Catalog', icon: Video },
-            { id: 'notifications', label: 'Email & WhatsApp Workflows', icon: MessageSquare },
+            { id: 'notifications', label: 'Email Notification Workflows', icon: Mail },
             { id: 'promo', label: 'Promotional Video', icon: Sparkles },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -236,8 +236,8 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
                       <p className="font-heading font-black text-2xl text-[#970747]">
                         ₹{stats?.totalRevenue?.toLocaleString('en-IN') || 0}
                       </p>
-                      <p className="text-[11px] text-emerald-600 font-semibold">
-                        Direct Razorpay verified
+                      <p className="text-[11px] text-[#5f259f] font-semibold">
+                        PhonePe PG v2 verified
                       </p>
                     </div>
 
@@ -282,7 +282,7 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
                         100%
                       </p>
                       <p className="text-[11px] text-[#66545D]">
-                        Email & WhatsApp synced
+                        Automated SMTP email synced
                       </p>
                     </div>
 
@@ -396,7 +396,7 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
                           <th className="p-3">Ticket</th>
                           <th className="p-3">Amount</th>
                           <th className="p-3">Status</th>
-                          <th className="p-3">WhatsApp Opt-in</th>
+                          <th className="p-3">Email Confirmed</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#EBDDE4]">
@@ -417,10 +417,10 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
                               </span>
                             </td>
                             <td className="p-3">
-                              {a.whatsappOptIn ? (
+                              {a.isEmailVerified !== false ? (
                                 <span className="text-emerald-600 font-bold">YES</span>
                               ) : (
-                                <span className="text-slate-400">NO</span>
+                                <span className="text-slate-400">PENDING</span>
                               )}
                             </td>
                           </tr>
@@ -599,22 +599,22 @@ export default function AdminDashboard({ isOpen, onClose, onWebinarsUpdated }) {
                 </div>
               )}
 
-              {/* TAB 4: EMAIL & WHATSAPP TEMPLATES */}
+              {/* TAB 4: EMAIL NOTIFICATION WORKFLOWS */}
               {activeTab === 'notifications' && (
                 <div className="space-y-6">
                   <div className="p-6 rounded-2xl bg-[#FDF5F8] border border-[#EBDDE4] space-y-3">
                     <div className="flex items-center gap-2 text-[#970747]">
-                      <MessageSquare className="w-5 h-5" />
+                      <Mail className="w-5 h-5" />
                       <h4 className="font-heading font-bold text-base text-[#25171E]">
-                        Approved WhatsApp Reminder Template
+                        SMTP Transactional Email Gateway
                       </h4>
                     </div>
                     <p className="text-xs text-[#66545D]">
-                      Template ID: <code className="font-mono bg-white px-2 py-0.5 rounded border border-[#EBDDE4]">kaira_webinar_reminder_v1</code> (Category: Utility / Reminder)
+                      Active Providers: <code className="font-mono bg-white px-2 py-0.5 rounded border border-[#EBDDE4]">Gmail SMTP / Nodemailer</code> (Port 465 SSL)
                     </p>
-                    <div className="p-4 rounded-xl bg-white border border-[#EBDDE4] font-mono text-xs text-[#25171E] leading-relaxed max-w-xl">
-                      🌟 *Kaira Webinar Hub* - Hi {`{{fullName}}`}! Your workshop *{`{{webinarTitle}}`}* starts soon. Tap here to join live: {`{{joiningLink}}`} | Pass ID: {`{{registrationId}}`}
-                    </div>
+                    <p className="text-xs text-[#66545D]">
+                      Handles user registration OTPs, ticket delivery with QR pass IDs, and automated PDF tax invoices upon PhonePe payment completion.
+                    </p>
                   </div>
 
                   <div className="p-6 rounded-2xl bg-[#FDF5F8] border border-[#EBDDE4] space-y-3">
