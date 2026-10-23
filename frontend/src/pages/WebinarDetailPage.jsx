@@ -25,12 +25,15 @@ import {
 import RegistrationModal from '../components/RegistrationModal';
 import SuccessReceiptModal from '../components/SuccessReceiptModal';
 import { useCart } from '../context/CartContext';
+import { useEnrollment } from '../context/EnrollmentContext';
+import CourseActionButton from '../components/common/CourseActionButton';
 
 export default function WebinarDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { checkOwnership } = useEnrollment();
   const { addToCart, isInCart, toggleWishlist, isInWishlist, setIsCartDrawerOpen } = useCart();
 
   const [webinar, setWebinar] = useState(null);
@@ -536,44 +539,49 @@ export default function WebinarDetailPage() {
 
                 {/* Primary CTA Buttons */}
                 <div className="space-y-2.5">
-                  <button
-                    onClick={handleRegisterClick}
-                    className="w-full btn-primary py-3 text-base font-bold shadow-md cursor-pointer"
-                  >
-                    {isFree ? 'Register for Free Pass' : 'Buy Now / Register Pass'}
-                  </button>
+                  <CourseActionButton 
+                    course={webinar} 
+                    className="py-3 text-base"
+                    onBeforeAction={() => {
+                      if (!checkOwnership(webinar.id || webinar.slug)?.isEnrolled) {
+                        handleRegisterClick();
+                      }
+                    }}
+                  />
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        if (isInCart(webinar.id || webinar.slug)) {
-                          setIsCartDrawerOpen(true);
-                        } else {
-                          addToCart(webinar);
-                        }
-                      }}
-                      className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                        isInCart(webinar.id || webinar.slug)
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
-                          : 'bg-[#FAF5F7] hover:bg-[#FCE8EF] text-[#970747] border border-[#F1D3DE]'
-                      }`}
-                    >
-                      <ShoppingCart className="w-4 h-4" />
-                      <span>{isInCart(webinar.id || webinar.slug) ? 'In Cart (Open)' : 'Add to Cart'}</span>
-                    </button>
+                  {!checkOwnership(webinar.id || webinar.slug)?.isEnrolled && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          if (isInCart(webinar.id || webinar.slug)) {
+                            setIsCartDrawerOpen(true);
+                          } else {
+                            addToCart(webinar);
+                          }
+                        }}
+                        className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          isInCart(webinar.id || webinar.slug)
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                            : 'bg-[#FAF5F7] hover:bg-[#FCE8EF] text-[#970747] border border-[#F1D3DE]'
+                        }`}
+                      >
+                        <ShoppingCart className="w-4 h-4" />
+                        <span>{isInCart(webinar.id || webinar.slug) ? 'In Cart (Open)' : 'Add to Cart'}</span>
+                      </button>
 
-                    <button
-                      onClick={() => toggleWishlist(webinar)}
-                      className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
-                        isInWishlist(webinar.id || webinar.slug)
-                          ? 'bg-[#970747] text-white border-[#970747]'
-                          : 'bg-white hover:bg-[#FAF5F7] text-[#1C1D1F] border-[#D1D1D7]'
-                      }`}
-                    >
-                      <Heart className={`w-4 h-4 ${isInWishlist(webinar.id || webinar.slug) ? 'fill-current' : ''}`} />
-                      <span>{isInWishlist(webinar.id || webinar.slug) ? 'Saved' : 'Wishlist'}</span>
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => toggleWishlist(webinar)}
+                        className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                          isInWishlist(webinar.id || webinar.slug)
+                            ? 'bg-[#970747] text-white border-[#970747]'
+                            : 'bg-white hover:bg-[#FAF5F7] text-[#1C1D1F] border-[#D1D1D7]'
+                        }`}
+                      >
+                        <Heart className={`w-4 h-4 ${isInWishlist(webinar.id || webinar.slug) ? 'fill-current' : ''}`} />
+                        <span>{isInWishlist(webinar.id || webinar.slug) ? 'Saved' : 'Wishlist'}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Guarantees & Terms */}

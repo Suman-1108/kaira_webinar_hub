@@ -25,6 +25,8 @@ export default function WebinarsPage() {
   const { wishlist, wishlistCount, cartCount, setIsCartDrawerOpen, setIsWishlistDrawerOpen } = useCart();
 
   const [webinars, setWebinars] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [activeProgramTab, setActiveProgramTab] = useState('all'); // 'all' | 'courses' | 'webinars'
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState([]);
   const [selectedFocus, setSelectedFocus] = useState('all'); // 'all', 'live_this_week', 'hands_on_code', 'ai_systems', 'wishlist'
@@ -42,7 +44,7 @@ export default function WebinarsPage() {
     setSearchInput(currentSearch);
   }, [currentSearch]);
 
-  // Fetch webinars with filters from API
+  // Fetch webinars & courses with filters from API
   useEffect(() => {
     const fetchCatalog = async () => {
       try {
@@ -61,20 +63,32 @@ export default function WebinarsPage() {
           queryParams.set('sort', currentSort);
         }
 
-        const res = await fetch(`/api/v1/webinars?${queryParams.toString()}`);
-        const data = await res.json();
-        if (data.success && data.data) {
-          setWebinars(data.data);
-        }
+        const [webinarsRes, coursesRes, catRes] = await Promise.all([
+          fetch(`/api/v1/webinars?${queryParams.toString()}`),
+          fetch(`/api/v1/courses`),
+          fetch('/api/v1/webinars/categories')
+        ]);
 
-        // Fetch categories list
-        const catRes = await fetch('/api/v1/webinars/categories');
+        const webinarsData = await webinarsRes.json();
+        const coursesData = await coursesRes.json();
         const catData = await catRes.json();
+
+        if (webinarsData.success && webinarsData.data) {
+          setWebinars(webinarsData.data);
+        }
+        if (coursesData.success && coursesData.data) {
+          const mappedCourses = coursesData.data.map(c => ({
+            ...c,
+            itemType: 'course',
+            speaker: c.speaker || c.instructor
+          }));
+          setCourses(mappedCourses);
+        }
         if (catData.success && catData.data) {
           setCategories(catData.data);
         }
       } catch (err) {
-        console.error('Failed to load webinar catalog:', err);
+        console.error('Failed to load catalog:', err);
       } finally {
         setLoading(false);
       }
@@ -104,33 +118,45 @@ export default function WebinarsPage() {
     setSearchParams(new URLSearchParams());
   };
 
-  // Determine which webinars to display based on selected focus pill
+  // Determine which items to display based on selected program tab and focus pill
   const displayedWebinars = React.useMemo(() => {
+    let pool = [];
+    if (activeProgramTab === 'courses') {
+      pool = [...courses];
+    } else if (activeProgramTab === 'webinars') {
+      pool = [...webinars];
+    } else {
+      pool = [...courses, ...webinars];
+    }
+
     if (selectedFocus === 'wishlist') {
       return wishlist;
     }
     if (selectedFocus === 'live_this_week') {
-      // Filter items occurring soon or marked live
-      return webinars.filter(w => w.status === 'upcoming' || w.seatsAvailable < 30);
+      return pool.filter(w => w.status === 'upcoming' || (w.seatsAvailable && w.seatsAvailable < 30));
     }
     if (selectedFocus === 'hands_on_code') {
-      return webinars.filter(w => 
-        w.title.toLowerCase().includes('react') || 
-        w.title.toLowerCase().includes('devops') || 
-        w.title.toLowerCase().includes('full stack') ||
-        w.category?.toLowerCase().includes('web')
+      return pool.filter(w => 
+        w.title?.toLowerCase().includes('react') || 
+        w.title?.toLowerCase().includes('devops') || 
+        w.title?.toLowerCase().includes('full stack') ||
+        w.title?.toLowerCase().includes('python') ||
+        w.title?.toLowerCase().includes('node') ||
+        w.category?.toLowerCase().includes('web') ||
+        w.category?.toLowerCase().includes('development')
       );
     }
     if (selectedFocus === 'ai_systems') {
-      return webinars.filter(w => 
-        w.title.toLowerCase().includes('ai') || 
-        w.title.toLowerCase().includes('agent') || 
-        w.title.toLowerCase().includes('neural') ||
-        w.category?.toLowerCase().includes('intelligence')
+      return pool.filter(w => 
+        w.title?.toLowerCase().includes('ai') || 
+        w.title?.toLowerCase().includes('agent') || 
+        w.title?.toLowerCase().includes('neural') ||
+        w.category?.toLowerCase().includes('intelligence') ||
+        w.category?.toLowerCase().includes('data')
       );
     }
-    return webinars;
-  }, [webinars, wishlist, selectedFocus]);
+    return pool;
+  }, [courses, webinars, wishlist, selectedFocus, activeProgramTab]);
 
   const hasActiveFilters = currentCategory !== 'All' || currentSearch || currentPriceType !== 'all' || currentSort !== 'upcoming' || selectedFocus !== 'all';
 
@@ -255,6 +281,59 @@ export default function WebinarsPage() {
         {/* 3. Filter & Search Control Panel */}
         <div className="bg-white p-5 rounded-2xl border border-[#F1D3DE] shadow-xs space-y-4">
           
+          {/* Program Type Tabs */}
+          <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-[#F1D3DE]">
+            <button
+              onClick={() => setActiveProgramTab('all')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeProgramTab === 'all'
+                  ? 'bg-[#970747] text-white shadow-xs'
+                  : 'bg-[#FAF5F7] text-[#52525B] hover:text-[#970747] hover:bg-[#FCE8EF] border border-[#F1D3DE]'
+              }`}
+            >
+              <span>All Programs</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
+                activeProgramTab === 'all' ? 'bg-white/20 text-white' : 'bg-[#970747]/10 text-[#970747]'
+              }`}>
+                {courses.length + webinars.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveProgramTab('courses')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeProgramTab === 'courses'
+                  ? 'bg-[#970747] text-white shadow-xs'
+                  : 'bg-[#FAF5F7] text-[#52525B] hover:text-[#970747] hover:bg-[#FCE8EF] border border-[#F1D3DE]'
+              }`}
+            >
+              <Award className="w-4 h-4 text-amber-500" />
+              <span>Certification Courses</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
+                activeProgramTab === 'courses' ? 'bg-white/20 text-white' : 'bg-[#970747]/10 text-[#970747]'
+              }`}>
+                {courses.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveProgramTab('webinars')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeProgramTab === 'webinars'
+                  ? 'bg-[#970747] text-white shadow-xs'
+                  : 'bg-[#FAF5F7] text-[#52525B] hover:text-[#970747] hover:bg-[#FCE8EF] border border-[#F1D3DE]'
+              }`}
+            >
+              <Radio className="w-4 h-4 text-red-500 animate-pulse" />
+              <span>Live Webinars</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
+                activeProgramTab === 'webinars' ? 'bg-white/20 text-white' : 'bg-[#970747]/10 text-[#970747]'
+              }`}>
+                {webinars.length}
+              </span>
+            </button>
+          </div>
+
           {/* Focus Format Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-[#F1D3DE]/60 scrollbar-none">
             <span className="text-xs font-bold text-[#52525B] shrink-0 mr-1 flex items-center gap-1">

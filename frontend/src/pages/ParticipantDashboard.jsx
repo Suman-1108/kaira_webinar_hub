@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
@@ -62,8 +62,10 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
   // Payment feedback banner state (success / retry / pending)
   const [paymentNotice, setPaymentNotice] = useState(null);
   const [retryingPayment, setRetryingPayment] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const verifiedOrdersRef = useRef(new Set());
 
-  // Retry checkout via official PhonePe create-order endpoint
+  // Retry checkout via official PhonePe create-order endpoint (creates a fresh merchant order)
   const handleRetryPayment = async (targetRegId) => {
     if (!targetRegId || retryingPayment) return;
     setRetryingPayment(true);
@@ -86,6 +88,48 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
       alert('Network error while connecting to PhonePe payment gateway.');
     } finally {
       setRetryingPayment(false);
+    }
+  };
+
+  // Re-check status for a pending payment with PhonePe
+  const handleCheckPendingStatus = async (targetRegId, targetOrderId) => {
+    if (verifyingPayment) return;
+    setVerifyingPayment(true);
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/payments/phonepe/verify', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ registrationId: targetRegId, orderId: targetOrderId })
+      });
+      const json = await res.json();
+      if (json.success && json.data?.status === 'completed') {
+        setActivePassId(targetRegId || json.data?.registrationId);
+        setPaymentNotice({
+          type: 'success',
+          message: 'PhonePe payment verified successfully! Your masterclass pass and tax invoice have been generated.'
+        });
+        fetchMyCourses();
+        fetchRegistrations();
+      } else if (json.state === 'PENDING') {
+        setPaymentNotice({
+          type: 'pending',
+          message: json.message || 'Payment is still being processed by PhonePe. Please check again in a minute.',
+          regId: json.data?.registrationId || targetRegId,
+          orderId: json.data?.orderId || targetOrderId
+        });
+      } else {
+        setPaymentNotice({
+          type: 'error',
+          message: json.message || 'PhonePe payment was not completed or was cancelled. Your reservation is safely retained.',
+          regId: json.data?.registrationId || targetRegId
+        });
+      }
+    } catch (err) {
+      console.warn('Check pending status error:', err);
+    } finally {
+      setVerifyingPayment(false);
     }
   };
 
@@ -151,7 +195,7 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
     }
   }, [user, token, authLoading]);
 
-  // Handle return redirect from PhonePe payment gateway
+  // Handle return redirect from PhonePe payment gateway with duplicate protection
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const payment = params.get('payment');
@@ -160,7 +204,23 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
 
     // Trigger verification only if order ID or payment parameter is present
     if ((payment === 'callback' || payment === 'status' || payment === 'success' || orderId) && (regId || orderId)) {
+      const verificationKey = `${regId || ''}_${orderId || ''}`;
+      if (verifiedOrdersRef.current.has(verificationKey)) {
+        return;
+      }
+      verifiedOrdersRef.current.add(verificationKey);
+
+      // Clean query parameters from URL so re-renders or page refreshes don't re-trigger verification in a loop
+      const cleanParams = new URLSearchParams(location.search);
+      cleanParams.delete('payment');
+      cleanParams.delete('regId');
+      cleanParams.delete('orderId');
+      cleanParams.delete('txn');
+      const cleanSearchStr = cleanParams.toString() ? `?${cleanParams.toString()}` : '';
+      navigate(`${location.pathname}${cleanSearchStr}`, { replace: true });
+
       const verifyPayment = async () => {
+        setVerifyingPayment(true);
         try {
           const headers = { 'Content-Type': 'application/json' };
           if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -171,6 +231,7 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
             body: JSON.stringify({ registrationId: regId, orderId })
           });
           const json = await res.json();
+
           // Strictly grant access ONLY when backend verification actually returns status: completed
           if (json.success && json.data?.status === 'completed') {
             setActivePassId(regId || json.data?.registrationId);
@@ -180,12 +241,20 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
             });
             fetchMyCourses();
             fetchRegistrations();
+          } else if (json.state === 'PENDING') {
+            console.log('[PhonePe Verification]: Payment is pending bank processing:', json.message);
+            setPaymentNotice({
+              type: 'pending',
+              message: json.message || 'Payment is processing with PhonePe. If you completed payment, please check status again.',
+              regId: json.data?.registrationId || regId,
+              orderId: json.data?.orderId || orderId
+            });
           } else {
             console.warn('[PhonePe Verification]: Payment not verified as completed:', json.message || json.state);
             setPaymentNotice({
               type: 'error',
               message: json.message || 'PhonePe payment was not completed or was cancelled. Your reservation is safely retained.',
-              regId: regId || orderId
+              regId: json.data?.registrationId || regId
             });
           }
         } catch (err) {
@@ -193,13 +262,15 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
           setPaymentNotice({
             type: 'error',
             message: 'Unable to verify payment status with PhonePe at this time. Please check your transaction or retry.',
-            regId: regId || orderId
+            regId: regId
           });
+        } finally {
+          setVerifyingPayment(false);
         }
       };
       verifyPayment();
     }
-  }, [location.search, token]);
+  }, [location.search, token, navigate]);
 
   // Toggle Archive
   const handleToggleArchive = async (courseId, currentStatus) => {
@@ -384,22 +455,49 @@ export default function ParticipantDashboard({ defaultTab = 'all' }) {
           <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs ${
             paymentNotice.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+              : paymentNotice.type === 'pending'
+              ? 'bg-amber-50 border-amber-200 text-amber-950'
               : 'bg-rose-50 border-rose-200 text-rose-950'
           }`}>
             <div className="flex items-start sm:items-center gap-3">
               {paymentNotice.type === 'success' ? (
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
+              ) : paymentNotice.type === 'pending' ? (
+                <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 sm:mt-0 animate-pulse" />
               ) : (
                 <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5 sm:mt-0" />
               )}
               <div>
                 <p className="text-xs sm:text-sm font-bold font-heading">
-                  {paymentNotice.type === 'success' ? 'Payment Verified Successfully' : 'Payment Status: Incomplete / Cancelled'}
+                  {paymentNotice.type === 'success' 
+                    ? 'Payment Verified Successfully' 
+                    : paymentNotice.type === 'pending'
+                    ? 'Payment Processing with PhonePe'
+                    : 'Payment Status: Incomplete / Cancelled'}
                 </p>
                 <p className="text-xs opacity-90 mt-0.5 leading-relaxed">{paymentNotice.message}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              {paymentNotice.type === 'pending' && paymentNotice.regId && (
+                <button
+                  onClick={() => handleCheckPendingStatus(paymentNotice.regId, paymentNotice.orderId)}
+                  disabled={verifyingPayment}
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {verifyingPayment ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Checking Status...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Check Status Again</span>
+                    </>
+                  )}
+                </button>
+              )}
               {paymentNotice.regId && paymentNotice.type === 'error' && (
                 <button
                   onClick={() => handleRetryPayment(paymentNotice.regId)}

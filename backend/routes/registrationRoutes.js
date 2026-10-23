@@ -4,6 +4,7 @@ const registrationController = require('../controllers/registrationController');
 const { verifyToken, optionalToken } = require('../middleware/authMiddleware');
 
 // Registration routes - supports authenticated students and guest registrations with OTP
+router.post('/', optionalToken, registrationController.initiateRegistration);
 router.post('/register', optionalToken, registrationController.initiateRegistration);
 router.post('/initiate', optionalToken, registrationController.initiateRegistration);
 router.post('/verify-payment', optionalToken, registrationController.verifyPayment);

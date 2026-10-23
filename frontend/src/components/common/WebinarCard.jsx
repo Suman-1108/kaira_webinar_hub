@@ -14,15 +14,23 @@ import {
   ArrowRight 
 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
+import { useEnrollment } from '../../context/EnrollmentContext';
+import CourseActionButton from './CourseActionButton';
 
 export default function WebinarCard({ webinar }) {
   if (!webinar) return null;
 
   const { isInWishlist, toggleWishlist, isInCart, addToCart, setIsCartDrawerOpen } = useCart();
+  const { checkOwnership } = useEnrollment();
 
   const id = webinar.id || webinar.slug;
+  const ownership = checkOwnership(id);
+  const isEnrolled = !!ownership?.isEnrolled;
+  const isCompleted = !!ownership?.isCompleted || ownership?.completionPercentage === 100;
   const isFree = webinar.price === 0;
-  const targetUrl = `/webinars/${webinar.slug || webinar.id}`;
+  const targetUrl = isEnrolled 
+    ? `/course/${webinar.id || webinar.slug}/learn`
+    : `/webinars/${webinar.slug || webinar.id}`;
   const rating = webinar.rating || 4.8;
   const reviewsCount = webinar.reviewsCount || 140;
   const inWishlist = isInWishlist(id);
@@ -49,14 +57,23 @@ export default function WebinarCard({ webinar }) {
           />
         </Link>
 
-        {/* Live Broadcast Indicator */}
+        {/* Enrolled / Live Broadcast Indicator */}
         <div className="absolute top-3 left-3 flex flex-col gap-1 items-start pointer-events-none">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md text-white text-[10px] font-extrabold uppercase tracking-wide border border-white/20">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-            <span>LIVE MASTERCLASS</span>
-          </span>
+          {isEnrolled ? (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-[10px] font-extrabold uppercase tracking-wide border border-white/20 shadow-md ${
+              isCompleted ? 'bg-emerald-600' : 'bg-[#970747]'
+            }`}>
+              <CheckCircle2 className="w-3 h-3" />
+              <span>{isCompleted ? 'COMPLETED' : 'ENROLLED'}</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md text-white text-[10px] font-extrabold uppercase tracking-wide border border-white/20">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              <span>LIVE MASTERCLASS</span>
+            </span>
+          )}
 
-          {isFree && (
+          {!isEnrolled && isFree && (
             <span className="inline-block px-2.5 py-0.5 rounded-full bg-[#15803D] text-white text-[10px] font-extrabold uppercase shadow-xs">
               Free Pass
             </span>
@@ -180,33 +197,33 @@ export default function WebinarCard({ webinar }) {
             </div>
           </div>
 
-          {/* Interactive Buttons (Add to Cart + Register) */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button
-              onClick={() => {
-                if (inCart) {
-                  setIsCartDrawerOpen(true);
-                } else {
-                  addToCart(webinar);
-                }
-              }}
-              className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                inCart
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
-                  : 'bg-[#FAF5F7] hover:bg-[#FCE8EF] text-[#970747] border border-[#F1D3DE]'
-              }`}
-            >
-              <ShoppingCart className="w-3.5 h-3.5" />
-              <span>{inCart ? 'In Cart' : 'Add to Cart'}</span>
-            </button>
+          {/* Interactive Dynamic Action Buttons */}
+          <div className="pt-1">
+            {isEnrolled ? (
+              <CourseActionButton course={webinar} />
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    if (inCart) {
+                      setIsCartDrawerOpen(true);
+                    } else {
+                      addToCart(webinar);
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    inCart
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                      : 'bg-[#FAF5F7] hover:bg-[#FCE8EF] text-[#970747] border border-[#F1D3DE]'
+                  }`}
+                >
+                  <ShoppingCart className="w-3.5 h-3.5" />
+                  <span>{inCart ? 'In Cart' : 'Add to Cart'}</span>
+                </button>
 
-            <Link
-              to={`${targetUrl}?register=true`}
-              className="btn-primary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1 rounded-xl shadow-xs"
-            >
-              <span>Register Pass</span>
-              <ArrowRight className="w-3 h-3" />
-            </Link>
+                <CourseActionButton course={webinar} />
+              </div>
+            )}
           </div>
         </div>
 

@@ -41,14 +41,34 @@ export default function HomePage() {
   const [selectedWebinarForReg, setSelectedWebinarForReg] = useState(null);
   const [verifiedPassId, setVerifiedPassId] = useState(null);
 
+  const [courses, setCourses] = useState([]);
+
   useEffect(() => {
-    const fetchWebinars = async () => {
+    const fetchCatalog = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/v1/webinars');
-        const data = await res.json();
-        if (data.success && data.data) {
-          setWebinars(data.data);
+        const [webinarsRes, coursesRes] = await Promise.all([
+          fetch('/api/v1/webinars'),
+          fetch('/api/v1/courses')
+        ]);
+        const webinarsData = await webinarsRes.json();
+        const coursesData = await coursesRes.json();
+        
+        let allItems = [];
+        if (coursesData.success && coursesData.data) {
+          const mappedCourses = coursesData.data.map(c => ({
+            ...c,
+            itemType: 'course',
+            speaker: c.speaker || c.instructor
+          }));
+          setCourses(mappedCourses);
+          allItems = [...mappedCourses];
+        }
+        if (webinarsData.success && webinarsData.data) {
+          allItems = [...allItems, ...webinarsData.data];
+          setWebinars(allItems);
+        } else if (allItems.length > 0) {
+          setWebinars(allItems);
         }
       } catch (err) {
         console.warn('Backend fetch error:', err);
@@ -57,7 +77,7 @@ export default function HomePage() {
       }
     };
 
-    fetchWebinars();
+    fetchCatalog();
   }, []);
 
   const handleHeroSearch = (e) => {

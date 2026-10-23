@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { EnrollmentProvider } from './context/EnrollmentContext';
 import { CartProvider } from './context/CartContext';
 
 // Layout
@@ -39,9 +40,12 @@ function AppShell() {
         <Routes>
           {/* Public Discovery Routes */}
           <Route path="/" element={<HomePage />} />
+          <Route path="/courses" element={<WebinarsPage />} />
           <Route path="/webinars" element={<WebinarsPage />} />
           <Route path="/webinars/:slug" element={<WebinarDetailPage />} />
           <Route path="/webinars/:slug/register" element={<WebinarDetailPage />} />
+          <Route path="/course/:slug" element={<WebinarDetailPage />} />
+          <Route path="/courses/:slug" element={<WebinarDetailPage />} />
           <Route path="/speakers" element={<SpeakersPage />} />
           <Route path="/speakers/:slug" element={<SpeakersPage />} />
 
@@ -95,11 +99,13 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <CartProvider>
-        <BrowserRouter>
-          <AppShell />
-        </BrowserRouter>
-      </CartProvider>
+      <EnrollmentProvider>
+        <CartProvider>
+          <BrowserRouter>
+            <AppShell />
+          </BrowserRouter>
+        </CartProvider>
+      </EnrollmentProvider>
     </AuthProvider>
   );
 }

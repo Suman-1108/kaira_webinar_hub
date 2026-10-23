@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const learningController = require('../controllers/learningController');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, optionalToken } = require('../middleware/authMiddleware');
 
 // Student-authenticated Udemy-style learning & entitlement routes
+router.get('/enrollment-status', optionalToken, learningController.getEnrollmentStatus);
 router.get('/my-courses', verifyToken, learningController.getMyEnrolledCourses);
 router.post('/enroll-free', verifyToken, learningController.enrollFreeCourse);
 router.get('/course/:courseId', verifyToken, learningController.getCourseCurriculum);

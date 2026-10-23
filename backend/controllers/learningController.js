@@ -100,11 +100,15 @@ const checkStudentEntitlement = async (user, courseId) => {
   const email = (user.email || '').toLowerCase().trim();
   const userId = String(user.id || user._id || '');
 
-  const webinar = await storage.getWebinarById(courseId);
-  const targetCourseId = webinar?.id || courseId;
-  const targetSlug = webinar?.slug || '';
+  const item = (storage.getItemById ? await storage.getItemById(courseId) : null) || await storage.getWebinarById(courseId);
+  const targetCourseId = item?.id || courseId;
+  const targetSlug = item?.slug || '';
 
-  // Check paid or free-enrolled registration records in database
+  // 1. Check primary Enrollment collection first (instant indexed lookup)
+  const enrollment = await storage.getEnrollment(userId, targetCourseId);
+  if (enrollment && enrollment.status === 'active') return true;
+
+  // 2. Check registrations fallback
   const allRegistrations = await storage.getAllRegistrations();
   const match = allRegistrations.find(r => 
     (r.webinarId === targetCourseId || r.webinarId === targetSlug) &&
@@ -113,6 +117,62 @@ const checkStudentEntitlement = async (user, courseId) => {
   );
 
   return !!match;
+};
+
+/**
+ * GET /api/learning/enrollment-status
+ * Fast endpoint for navbar, course cards, and player to check ownership state
+ */
+exports.getEnrollmentStatus = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.json({
+        success: true,
+        authenticated: false,
+        enrolledCourseIds: [],
+        enrollmentMap: {}
+      });
+    }
+
+    const email = (user.email || '').toLowerCase().trim();
+    const userId = String(user.id || user._id || '');
+
+    // Get all enrollments for user
+    const enrollments = await storage.getEnrollmentsByUser(userId, email);
+    const registrations = (await storage.getAllRegistrations()).filter(r => 
+      (r.email?.toLowerCase().trim() === email || String(r.userId) === userId) &&
+      r.paymentStatus === 'completed'
+    );
+
+    const enrolledSet = new Set();
+    enrollments.forEach(e => enrolledSet.add(e.courseId));
+    registrations.forEach(r => enrolledSet.add(r.webinarId));
+
+    const enrolledCourseIds = Array.from(enrolledSet);
+    const enrollmentMap = {};
+
+    for (const cid of enrolledCourseIds) {
+      const prog = await getOrCreateProgress(userId, email, cid);
+      enrollmentMap[cid] = {
+        isEnrolled: true,
+        isCompleted: prog.isCourseCompleted || prog.completionPercentage === 100,
+        completionPercentage: prog.completionPercentage || 0,
+        lastAccessedLessonId: prog.lastAccessedLessonId || '',
+        certificateEligible: prog.isCourseCompleted || prog.completionPercentage === 100
+      };
+    }
+
+    res.json({
+      success: true,
+      authenticated: true,
+      enrolledCourseIds,
+      enrollmentMap
+    });
+  } catch (error) {
+    console.error('getEnrollmentStatus error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 /**
@@ -178,6 +238,20 @@ exports.enrollFreeCourse = async (req, res) => {
     };
 
     await storage.createRegistration(regData);
+
+    // Create authoritative Enrollment record
+    await storage.createEnrollment({
+      userId,
+      userEmail: email,
+      courseId: webinar.id,
+      courseTitle: webinar.title,
+      amount: 0,
+      currency: 'INR',
+      paymentStatus: 'free',
+      paymentMethod: 'free',
+      registrationId,
+      status: 'active'
+    });
 
     // Initialize progress record
     const curriculum = curriculumService.buildCurriculumForWebinar(webinar);

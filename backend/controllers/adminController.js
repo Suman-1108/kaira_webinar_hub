@@ -176,3 +176,105 @@ exports.updateSystemConfig = (req, res) => {
   systemConfig = { ...systemConfig, ...req.body };
   res.json({ success: true, message: 'Settings saved', data: systemConfig });
 };
+
+// Course Management (Admin Only)
+exports.listAdminCourses = async (req, res) => {
+  try {
+    const courses = await storage.getCourses();
+    res.json({ success: true, count: courses.length, data: courses });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.createAdminCourse = async (req, res) => {
+  try {
+    const courseData = req.body;
+    if (!courseData.title) {
+      return res.status(400).json({ success: false, message: 'Course title is required' });
+    }
+    const created = await storage.createCourse(courseData);
+    res.status(201).json({ success: true, message: 'Course created successfully', data: created });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateAdminCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await storage.updateCourse(id, req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+    res.json({ success: true, message: 'Course updated successfully', data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteAdminCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await storage.deleteCourse(id);
+    res.json({ success: true, message: 'Course deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Webinar Management (Admin Only)
+exports.listAdminWebinars = async (req, res) => {
+  try {
+    const webinars = await storage.getWebinars();
+    res.json({ success: true, count: webinars.length, data: webinars });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.createAdminWebinar = async (req, res) => {
+  try {
+    const webinarData = req.body;
+    if (!webinarData.title) {
+      return res.status(400).json({ success: false, message: 'Webinar title is required' });
+    }
+    const created = await storage.createWebinar(webinarData);
+    res.status(201).json({ success: true, message: 'Webinar created successfully', data: created });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateAdminWebinar = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await storage.updateWebinar(id, req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Webinar not found' });
+    }
+    res.json({ success: true, message: 'Webinar updated successfully', data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteAdminWebinar = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await storage.deleteWebinar(id);
+    res.json({ success: true, message: 'Webinar deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Enrollments List (Admin Only)
+exports.listAdminEnrollments = async (req, res) => {
+  try {
+    const enrollments = await storage.getAllEnrollments();
+    res.json({ success: true, count: enrollments.length, data: enrollments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -1,6 +1,7 @@
 const assert = require('assert');
 const dotenv = require('dotenv');
 dotenv.config();
+process.env.NODE_ENV = 'test';
 
 const storage = require('./services/storage');
 const phonepeService = require('./services/phonepeService');
@@ -130,7 +131,164 @@ async function runTestSuite() {
     assert.strictEqual(updated.paymentStatus, 'pending', 'Registration paymentStatus must remain pending');
   });
 
-  // 6. Idempotent Payment Fulfillment & Invoice Dispatch
+  // 6. Failed Status Handling & Course Access Guard
+  await test('verifyPhonePePayment handles FAILED/CANCELLED order correctly and retains reservation', async () => {
+    const testReg = await storage.createRegistration({
+      registrationId: 'KWH-TEST-FAIL-01',
+      webinarId: 'webinar-ai-agents',
+      webinarTitle: 'Mastering Agentic AI',
+      fullName: 'Cancelled Learner',
+      email: 'cancelled@example.com',
+      phone: '9876543210',
+      amount: 499,
+      currency: 'INR',
+      paymentStatus: 'pending',
+      paymentMethod: 'phonepe',
+      phonepeMerchantTransactionId: 'ORD_INVALID_NONEXISTENT_99999',
+      createdAt: new Date()
+    });
+
+    let responseStatus = null;
+    let responseBody = null;
+    const mockRes = {
+      status(s) { responseStatus = s; return this; },
+      json(b) { responseBody = b; return this; }
+    };
+
+    await registrationController.verifyPhonePePayment({
+      body: { registrationId: testReg.registrationId, orderId: 'ORD_INVALID_NONEXISTENT_99999' }
+    }, mockRes);
+
+    assert.strictEqual(responseStatus, 400, 'Failed payment must return HTTP 400');
+    assert.strictEqual(responseBody.success, false, 'success flag must be false');
+    assert.strictEqual(responseBody.state, 'FAILED', 'state should be FAILED');
+    assert.strictEqual(responseBody.data?.registrationId, testReg.registrationId, 'Must return registrationId for safe retry');
+
+    const updated = await storage.getRegistrationById(testReg.registrationId);
+    assert.strictEqual(updated.paymentStatus, 'pending', 'Registration must remain pending and never marked paid');
+  });
+
+  // 7. Safe Retry with Fresh Order ID
+  await test('createPhonePeOrder allows safe retry for uncompleted registration with new order ID', async () => {
+    const testReg = await storage.createRegistration({
+      registrationId: 'KWH-TEST-RETRY-01',
+      webinarId: 'webinar-ai-agents',
+      webinarTitle: 'Mastering Agentic AI',
+      fullName: 'Retry Learner',
+      email: 'retry.learner@example.com',
+      phone: '9876543210',
+      amount: 499,
+      currency: 'INR',
+      paymentStatus: 'pending',
+      paymentMethod: 'phonepe',
+      phonepeMerchantTransactionId: 'ORD_OLD_FAILED_ORDER_111',
+      createdAt: new Date()
+    });
+
+    let retryRes = null;
+    let retryStatus = null;
+    const mockRes = {
+      status(s) { retryStatus = s; return this; },
+      json(b) { retryRes = b; return this; }
+    };
+
+    await registrationController.createPhonePeOrder({
+      body: { registrationId: testReg.registrationId }
+    }, mockRes);
+
+    assert.strictEqual(retryRes.success, true, 'Retry must succeed');
+    assert.ok(retryRes.merchantOrderId, 'New merchantOrderId must be generated');
+    assert.notStrictEqual(retryRes.merchantOrderId, 'ORD_OLD_FAILED_ORDER_111', 'Retry must generate a brand new order ID');
+    assert.ok(retryRes.redirectUrl, 'New PhonePe redirectUrl must be provided');
+
+    // Confirm registration record updated with new merchant transaction ID
+    const updated = await storage.getRegistrationById(testReg.registrationId);
+    assert.strictEqual(updated.phonepeMerchantTransactionId, retryRes.merchantOrderId, 'Registration record must store new merchantOrderId');
+  });
+
+  // 8. Amount Mismatch Security Guard
+  await test('verifyPhonePePayment rejects completed transaction if amount in paise does not match', async () => {
+    // If phonepeService reports completed order with wrong amount
+    const origCheck = phonepeService.checkPhonePeStatus;
+    phonepeService.checkPhonePeStatus = async () => ({
+      success: true,
+      state: 'COMPLETED',
+      orderId: 'TXN_MISMATCH_01',
+      merchantOrderId: 'ORD_MISMATCH_01',
+      amount: 1000 // 10 INR instead of 499 INR
+    });
+
+    const testReg = await storage.createRegistration({
+      registrationId: 'KWH-TEST-MISMATCH-01',
+      webinarId: 'webinar-ai-agents',
+      webinarTitle: 'Mastering Agentic AI',
+      fullName: 'Mismatch Tester',
+      email: 'mismatch@example.com',
+      phone: '9876543210',
+      amount: 499,
+      currency: 'INR',
+      paymentStatus: 'pending',
+      paymentMethod: 'phonepe',
+      phonepeMerchantTransactionId: 'ORD_MISMATCH_01',
+      createdAt: new Date()
+    });
+
+    let responseStatus = null;
+    let responseBody = null;
+    const mockRes = {
+      status(s) { responseStatus = s; return this; },
+      json(b) { responseBody = b; return this; }
+    };
+
+    await registrationController.verifyPhonePePayment({
+      body: { registrationId: testReg.registrationId, orderId: 'ORD_MISMATCH_01' }
+    }, mockRes);
+
+    // Restore original function
+    phonepeService.checkPhonePeStatus = origCheck;
+
+    assert.strictEqual(responseStatus, 400, 'Amount mismatch must return HTTP 400');
+    assert.strictEqual(responseBody.success, false, 'Amount mismatch must fail verification');
+    assert.match(responseBody.message, /mismatch/i, 'Must report amount mismatch');
+
+    const updated = await storage.getRegistrationById(testReg.registrationId);
+    assert.strictEqual(updated.paymentStatus, 'pending', 'Registration must remain pending on amount mismatch');
+  });
+
+  // 9. Registration Ownership Enforcement
+  await test('verifyPhonePePayment rejects unauthorized user trying to verify another student pass', async () => {
+    const testReg = await storage.createRegistration({
+      registrationId: 'KWH-TEST-OWNER-01',
+      webinarId: 'webinar-ai-agents',
+      webinarTitle: 'Mastering Agentic AI',
+      fullName: 'Real Student',
+      email: 'real.student@example.com',
+      phone: '9876543210',
+      amount: 499,
+      currency: 'INR',
+      paymentStatus: 'pending',
+      paymentMethod: 'phonepe',
+      phonepeMerchantTransactionId: 'ORD_TEST_OWNER_01',
+      createdAt: new Date()
+    });
+
+    let responseStatus = null;
+    let responseBody = null;
+    const mockRes = {
+      status(s) { responseStatus = s; return this; },
+      json(b) { responseBody = b; return this; }
+    };
+
+    await registrationController.verifyPhonePePayment({
+      user: { id: 'usr_attacker_99', email: 'attacker@evil.com', role: 'student' },
+      body: { registrationId: testReg.registrationId, orderId: 'ORD_TEST_OWNER_01' }
+    }, mockRes);
+
+    assert.strictEqual(responseStatus, 403, 'Unauthorized verification must return HTTP 403');
+    assert.strictEqual(responseBody.success, false, 'Access must be denied');
+  });
+
+  // 10. Idempotent Payment Fulfillment & Invoice Dispatch
   let testFulfilledRegId = 'KWH-TEST-FULFILL-01';
   await test('fulfillPaymentAndDeliverInvoice completes payment, generates invoice, and is idempotent', async () => {
     const testReg = await storage.createRegistration({

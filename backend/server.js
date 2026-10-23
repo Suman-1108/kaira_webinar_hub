@@ -19,6 +19,7 @@ const emailService = require('./services/emailService');
 
 const authRoutes = require('./routes/authRoutes');
 const webinarRoutes = require('./routes/webinarRoutes');
+const courseRoutes = require('./routes/courseRoutes');
 const registrationRoutes = require('./routes/registrationRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const learningRoutes = require('./routes/learningRoutes');
@@ -80,6 +81,8 @@ app.use('/api/v1/auth', authRoutes);
 
 app.use('/api/webinars', webinarRoutes);
 app.use('/api/v1/webinars', webinarRoutes);
+
+app.use(['/api/courses', '/api/v1/courses'], courseRoutes);
 
 app.use('/api/registration', registrationRoutes);
 app.use('/api/registrations', registrationRoutes);

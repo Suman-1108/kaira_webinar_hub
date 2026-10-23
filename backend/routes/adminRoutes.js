@@ -26,4 +26,19 @@ router.post('/notifications/:jobId/retry', adminController.retryNotificationJob)
 router.get('/config', adminController.getSystemConfig);
 router.post('/config', adminController.updateSystemConfig);
 
+// Course Management (Admin Only)
+router.get('/courses', adminController.listAdminCourses);
+router.post('/courses', adminController.createAdminCourse);
+router.put('/courses/:id', adminController.updateAdminCourse);
+router.delete('/courses/:id', adminController.deleteAdminCourse);
+
+// Webinar Management (Admin Only)
+router.get('/webinars', adminController.listAdminWebinars);
+router.post('/webinars', adminController.createAdminWebinar);
+router.put('/webinars/:id', adminController.updateAdminWebinar);
+router.delete('/webinars/:id', adminController.deleteAdminWebinar);
+
+// Enrollments (Admin Only)
+router.get('/enrollments', adminController.listAdminEnrollments);
+
 module.exports = router;
